@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/rgt/rgt_navigation2/STM32H723_Nucleo_ETH_Motor/Core/Inc/**)",
+      "Read(//home/rgt/rgt_navigation2/STM32H723_Nucleo_ETH_Motor/Core/Src/**)",
+      "Bash(cd /home/rgt/rgt_navigation2/STM32H723_Nucleo_ETH_Motor/Core/Src && grep -n \"void StartMainTask\\\\|void StartSensorTask\\\\|void StartMotorTask\\\\|osThreadNew\\\\|StartDefaultTask\\\\|void Start.*Task\\\\|osThreadId\\\\|MotorControlLoop\\\\|MotorDriver_GetNextSlaveId\\\\|GetMotorControllerData\\\\|udp_queue_send\\\\|osDelay\\\\|HAL_GPIO\\\\|ControlTimeoutCheck\\\\|g_target\\\\|target_rpm\\\\|left_rpm\\\\|right_rpm\" main.c | head -80)",
+      "Bash(cd /home/rgt/rgt_navigation2/STM32H723_Nucleo_ETH_Motor/Core/Src && grep -n \"^void StartMainTask\\\\|^void StartSensorTask\\\\|^void StartMotorTask\\\\|^/\\\\* USER CODE BEGIN Header_Start\\\\|^void Start\" main.c)"
+    ]
+  }
+}
