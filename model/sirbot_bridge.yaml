@@ -1,0 +1,106 @@
+# Gazebo to ROS 2 Bridge Configuration for SQUARE_SIRBOT
+
+# Command velocity (ROS -> Gazebo)
+- ros_topic_name: /robot_namespace/filtered_key_vel
+  gz_topic_name: /robot_namespace/filtered_key_vel
+  ros_type_name: geometry_msgs/msg/Twist
+  gz_type_name: gz.msgs.Twist
+  direction: ROS_TO_GZ
+
+# LiDAR scan data (Gazebo -> ROS)
+- ros_topic_name: /robot_namespace/scan
+  gz_topic_name: /robot_namespace/lidar
+  ros_type_name: sensor_msgs/msg/LaserScan
+  gz_type_name: gz.msgs.LaserScan
+  direction: GZ_TO_ROS
+
+# IMU data (Gazebo -> ROS)
+- ros_topic_name: /robot_namespace/imu/data
+  gz_topic_name: /robot_namespace/imu
+  ros_type_name: sensor_msgs/msg/Imu
+  gz_type_name: gz.msgs.IMU
+  direction: GZ_TO_ROS
+
+# Odometry (Gazebo -> ROS)
+- ros_topic_name: /robot_namespace/ekf_odom
+  gz_topic_name: /robot_namespace/odometry
+  ros_type_name: nav_msgs/msg/Odometry
+  gz_type_name: gz.msgs.Odometry
+  direction: GZ_TO_ROS
+
+# Camera 1 - Color Image
+- ros_topic_name: /robot_namespace/camera1/image_raw
+  gz_topic_name: /robot_namespace/camera1/image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: gz.msgs.Image
+  direction: GZ_TO_ROS
+
+# Camera 1 - Camera Info
+- ros_topic_name: /robot_namespace/camera1/camera_info
+  gz_topic_name: /robot_namespace/camera1/camera_info
+  ros_type_name: sensor_msgs/msg/CameraInfo
+  gz_type_name: gz.msgs.CameraInfo
+  direction: GZ_TO_ROS
+
+# Camera 1 - Depth Image
+- ros_topic_name: /robot_namespace/camera1/depth/image_raw
+  gz_topic_name: /robot_namespace/camera1/depth_image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: gz.msgs.Image
+  direction: GZ_TO_ROS
+  
+# Camera 1 - PointCloud2 
+- ros_topic_name: /robot_namespace/camera1/depth/points
+  gz_topic_name: /robot_namespace/camera1/points
+  ros_type_name: sensor_msgs/msg/PointCloud2
+  gz_type_name: gz.msgs.PointCloudPacked
+  direction: GZ_TO_ROS
+
+# Camera 2 - Color Image
+- ros_topic_name: /robot_namespace/camera2/image_raw
+  gz_topic_name: /robot_namespace/camera2/image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: gz.msgs.Image
+  direction: GZ_TO_ROS
+
+# Camera 2 - Camera Info
+- ros_topic_name: /robot_namespace/camera2/camera_info
+  gz_topic_name: /robot_namespace/camera2/camera_info
+  ros_type_name: sensor_msgs/msg/CameraInfo
+  gz_type_name: gz.msgs.CameraInfo
+  direction: GZ_TO_ROS
+
+# Camera 2 - Depth Image
+- ros_topic_name: /robot_namespace/camera2/depth/image_raw
+  gz_topic_name: /robot_namespace/camera2/depth_image
+  ros_type_name: sensor_msgs/msg/Image
+  gz_type_name: gz.msgs.Image
+  direction: GZ_TO_ROS
+
+# Camera 2 - PointCloud2 
+- ros_topic_name: /robot_namespace/camera2/depth/points
+  gz_topic_name: /robot_namespace/camera2/points
+  ros_type_name: sensor_msgs/msg/PointCloud2
+  gz_type_name: gz.msgs.PointCloudPacked
+  direction: GZ_TO_ROS
+
+# TF (for transforms)
+- ros_topic_name: /tf
+  gz_topic_name: /model/robot_namespace/tf
+  ros_type_name: tf2_msgs/msg/TFMessage
+  gz_type_name: gz.msgs.Pose_V
+  direction: GZ_TO_ROS
+
+# Joint States (Gazebo -> ROS)
+- ros_topic_name: /robot_namespace/joint_states
+  gz_topic_name: /model/robot_namespace/joint_states
+  ros_type_name: sensor_msgs/msg/JointState
+  gz_type_name: gz.msgs.Model
+  direction: GZ_TO_ROS
+
+# Clock
+- ros_topic_name: /clock
+  gz_topic_name: /clock
+  ros_type_name: rosgraph_msgs/msg/Clock
+  gz_type_name: gz.msgs.Clock
+  direction: GZ_TO_ROS

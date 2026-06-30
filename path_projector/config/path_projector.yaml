@@ -1,0 +1,16 @@
+path_projector:
+  ros__parameters:
+    plan_topic:         /apple/plan
+    image_topic:        /apple/camera1/image_raw
+    camera_info_topic:  /apple/camera1/camera_info
+    output_topic:       /path_projection/image
+    map_frame:          map
+    path_step:          5
+    dot_radius:         4
+    line_thickness:     2
+    dot_color_bgr:      [0, 255, 0]
+    line_color_bgr:     [0, 200, 0]
+    tf_timeout_sec:     0.1
+    use_latest_tf:      true
+    depth_min_m:        2.0
+    depth_max_m:        6.0

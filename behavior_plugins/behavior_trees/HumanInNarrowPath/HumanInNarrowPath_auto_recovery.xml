@@ -1,0 +1,152 @@
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="25" name="NavigateRecovery">
+
+      <!-- ═══ CHILD 1: Normal navigation pipeline (modified) ═══ -->
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector
+          selected_controller="{selected_controller}"
+          default_controller="FollowPath"
+          topic_name="controller_selector"/>
+        <PlannerSelector
+          selected_planner="{selected_planner}"
+          default_planner="GridBased"
+          topic_name="planner_selector"/>
+
+        <!-- ComputePath: không đổi — sẽ replan khi {path} bị xóa -->
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose
+              goal="{goal}"
+              path="{path}"
+              planner_id="{selected_planner}"
+              error_code_id="{compute_path_error_code}"/>
+            <Sequence>
+              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+              <ClearEntireCostmap
+                name="ClearGlobalCostmap-Context"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+        </RateController>
+
+        <!--
+          THAY ĐỔI CHÍNH:
+          Sau khi NarrowPathHandler hoàn thành (SUCCESS),
+          SetBlackboard xóa {path} → chu kỳ tiếp theo RateController
+          tick ComputePathToPose → replan từ vị trí wait place → {path} mới
+          → FollowPath chạy lại với path mới về goal gốc.
+          Không cần restart toàn bộ pipeline.
+        -->
+        <ReactiveFallback name="FollowOrHandleNarrowPath">
+
+          <!-- Child 2: NarrowPath handler — KHÔNG có ForceFailure -->
+          <Sequence name="NarrowPathHandler_S2">
+
+            <!-- Guard -->
+            <HumanInNarrowPath/>    <!-- your detection plugin as a Condition node -->
+
+            <!-- Tính goal wait place -->
+            <SetGoalFromLocation
+              location_file="/home/rgt/ros2_robot_ws/src/bcr_bot/config/location.yaml"
+              loc="closest"
+              goal="{wait_goal}"/>
+
+            <!-- Compute path tới wait place -->
+            <RateController hz="2.0">
+              <RecoveryNode number_of_retries="1" name="ComputePathToWait_S2">
+                <ComputePathToPose
+                  goal="{wait_goal}"
+                  path="{wait_path}"
+                  planner_id="{selected_planner}"
+                  error_code_id="{compute_path_error_code}"/>
+                <Sequence>
+                  <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                  <ClearEntireCostmap
+                    name="ClearGlobalCostmap-Wait-S2"
+                    service_name="global_costmap/clear_entirely_global_costmap"/>
+                </Sequence>
+              </RecoveryNode>
+            </RateController>
+
+            <!-- Follow tới wait place -->
+            <RecoveryNode number_of_retries="1" name="FollowPathToWait_S2">
+              <FollowPath
+                path="{wait_path}"
+                controller_id="{selected_controller}"
+                error_code_id="{follow_path_error_code}"/>
+              <Sequence>
+                <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                <ClearEntireCostmap
+                  name="ClearLocalCostmap-Wait-S2"
+                  service_name="local_costmap/clear_entirely_local_costmap"/>
+              </Sequence>
+            </RecoveryNode>
+
+            <!-- Wait at wait place until human clears the narrow path -->
+            <KeepRunningUntilFailure>
+              <HumanInNarrowPath/>
+            </KeepRunningUntilFailure>
+
+            <!--
+              Human is gone:
+              1. Reset {path} so ComputePathToPose replans from wait place to original goal.
+              2. ForceFailure makes NarrowPathHandler_S2 return FAILURE.
+                 → ReactiveFallback tries FollowPath → {path} empty → FAILURE
+                 → PipelineSequence FAILURE → RecoveryNode retries
+                 → RateController fires ComputePathToPose → new {path}
+                 → HumanInNarrowPath now FAILURE (human gone) → FollowPath runs → goal reached
+            -->
+            <ResetPath path="{path}"/>
+            <ForceFailure>
+              <AlwaysSuccess/>
+            </ForceFailure>
+          </Sequence>
+
+
+          <!-- Child 1: FollowPath normal -->
+          <RecoveryNode number_of_retries="1" name="FollowPath">
+            <FollowPath
+              path="{path}"
+              controller_id="{selected_controller}"
+              error_code_id="{follow_path_error_code}"/>
+            <Sequence>
+              <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+              <ClearEntireCostmap
+                name="ClearLocalCostmap-Context"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+
+
+        </ReactiveFallback>
+      </PipelineSequence>
+
+      <!-- ═══ CHILD 2: Recovery subtree — giữ nguyên ═══ -->
+      <Sequence>
+        <Fallback>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+        </Fallback>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="ClearingActions">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+            <!-- <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/> -->
+            <Wait wait_duration="3.0"/>
+            <!-- <BackUp backup_dist="0.20" backup_speed="0.15" error_code_id="{backup_code_id}"/> -->
+          </RoundRobin>
+        </ReactiveFallback>
+      </Sequence>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>
+
+
+<!--
+  This Behavior Tree is an overwrite of the default navigate_to_pose Behavior Tree with a custom recovery behavior for handling narrow paths with humans present.
+  The main idea is to detect when the robot is in a narrow path with a human, then replan a path to a nearby "wait place" and wait there until the human clears the path, before replanning again to the original goal.
+-->

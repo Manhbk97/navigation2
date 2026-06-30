@@ -1,0 +1,210 @@
+<?xml version="1.0" ?>
+<robot name="SQUARE_SIRBOT"
+       xmlns:xacro="http://ros.org/wiki/xacro"
+       hw_version="v.1.3"
+       motor_ch="2ch"
+       camera1="d435"
+       camera2="d435"
+       lidar1="s2"
+       footprint="[[0.255, 0.1365], [0.241, 0.17806], [0.185, 0.2065], [-0.185, 0.2065], [-0.24133, 0.17806], [-0.255, 0.1365], [-0.255, -0.1365], [-0.24133, -0.17806], [-0.185, -0.2065], [0.185, -0.2065], [0.24133, -0.17806], [0.255, -0.1365]]"
+       robot_radius="0.32">
+
+  <link name="robot_namespace/base_footprint">
+    <origin xyz="0 0 0" rpy="0 0 0 " />
+  </link>
+  <joint name="robot_namespace/base_joint" type="fixed">
+      <origin xyz="0 0 0.086500" rpy="0 0 0" />
+    <parent link="robot_namespace/base_footprint"/>
+    <child link="robot_namespace/base_link" />
+  </joint>
+  <link name="robot_namespace/base_link"/>
+  <joint name="robot_namespace/imu_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.171100" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/base_link"/>
+    <child link="robot_namespace/imu_link" />
+  </joint>
+  <link name="robot_namespace/imu_link"/>
+  <joint name="robot_namespace/scan_joint" type="fixed">
+    <origin xyz=" 0.144900 0.000000 0.131600" rpy=" 0.000000 0.000000 0.000"/>
+    <parent link="robot_namespace/base_link"/>
+    <child link="robot_namespace/scan_link" />
+  </joint>
+  <link name="robot_namespace/scan_link"/>
+  <joint name="robot_namespace/camera1_bottom_screw_joint" type="fixed">
+    <!-- <origin xyz=" 0.179500 0.000000 0.914800" rpy=" 0.000000 0.506145 0.000000"/> -->
+    <origin xyz=" 0.179500 0.000000 0.54800" rpy=" 0.000000 0.0000 0.000000"/>
+    <parent link="robot_namespace/base_link"/>
+    <child link="robot_namespace/camera1_bottom_screw_link" />
+  </joint>
+  <link name="robot_namespace/camera1_bottom_screw_link"/>
+  <joint name="robot_namespace/camera1_link_joint" type="fixed">
+    <origin xyz=" 0.010600 0.017500 0.012500" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera1_bottom_screw_link"/>
+    <child link="robot_namespace/camera1_link" />
+  </joint>
+  <link name="robot_namespace/camera1_link"/>
+  <joint name="robot_namespace/camera1_color_joint" type="fixed">
+    <origin xyz=" 0.000000 0.015000 0.000000" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera1_link"/>
+    <child link="robot_namespace/camera1_color_frame" />
+  </joint>
+  <link name="robot_namespace/camera1_color_frame"/>
+  <joint name="robot_namespace/camera1_color_optical_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" -1.570796 0.000000 -1.570796"/>
+    <parent link="robot_namespace/camera1_color_frame"/>
+    <child link="robot_namespace/camera1_color_optical_frame" />
+  </joint>
+  <link name="robot_namespace/camera1_color_optical_frame"/>
+  <joint name="robot_namespace/camera1_depth_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera1_link"/>
+    <child link="robot_namespace/camera1_depth_frame" />
+  </joint>
+  <link name="robot_namespace/camera1_depth_frame"/>
+  <joint name="robot_namespace/camera1_depth_optical_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" 0.0 0.000000 0.0"/>
+    <parent link="robot_namespace/camera1_depth_frame"/>
+    <child link="robot_namespace/camera1_depth_optical_frame" />
+  </joint>
+  <link name="robot_namespace/camera1_depth_optical_frame"/>
+  <joint name="robot_namespace/camera1_infra1_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera1_link"/>
+    <child link="robot_namespace/camera1_infra1_frame" />
+  </joint>
+  <link name="robot_namespace/camera1_infra1_frame"/>
+  <joint name="robot_namespace/camera1_infra1_optical_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" -1.570796 0.000000 -1.570796"/>
+    <parent link="robot_namespace/camera1_infra1_frame"/>
+    <child link="robot_namespace/camera1_infra1_optical_frame" />
+  </joint>
+  <link name="robot_namespace/camera1_infra1_optical_frame"/>
+  <joint name="robot_namespace/camera1_infra2_joint" type="fixed">
+    <origin xyz=" 0.000000 -0.050000 0.000000" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera1_link"/>
+    <child link="robot_namespace/camera1_infra2_frame" />
+  </joint>
+  <link name="robot_namespace/camera1_infra2_frame"/>
+  <joint name="robot_namespace/camera1_infra2_optical_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" -1.570796 0.000000 -1.570796"/>
+    <parent link="robot_namespace/camera1_infra2_frame"/>
+    <child link="robot_namespace/camera1_infra2_optical_frame" />
+  </joint>
+  <link name="robot_namespace/camera1_infra2_optical_frame"/>
+  <joint name="robot_namespace/camera2_bottom_screw_joint" type="fixed">
+    <origin xyz=" 0.246800 0.000000 -0.014600" rpy=" 0.000000 -1.064651 0.000000"/>
+    <parent link="robot_namespace/base_link"/>
+    <child link="robot_namespace/camera2_bottom_screw_link" />
+  </joint>
+  <link name="robot_namespace/camera2_bottom_screw_link"/>
+  <joint name="robot_namespace/camera2_link_joint" type="fixed">
+    <origin xyz=" 0.010600 0.017500 0.012500" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera2_bottom_screw_link"/>
+    <child link="robot_namespace/camera2_link" />
+  </joint>
+  <link name="robot_namespace/camera2_link"/>
+  <joint name="robot_namespace/camera2_color_joint" type="fixed">
+    <origin xyz=" 0.000000 0.015000 0.000000" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera2_link"/>
+    <child link="robot_namespace/camera2_color_frame" />
+  </joint>
+  <link name="robot_namespace/camera2_color_frame"/>
+  <joint name="robot_namespace/camera2_color_optical_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" -1.570796 0.000000 -1.570796"/>
+    <parent link="robot_namespace/camera2_color_frame"/>
+    <child link="robot_namespace/camera2_color_optical_frame" />
+  </joint>
+  <link name="robot_namespace/camera2_color_optical_frame"/>
+  <joint name="robot_namespace/camera2_depth_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera2_link"/>
+    <child link="robot_namespace/camera2_depth_frame" />
+  </joint>
+  <link name="robot_namespace/camera2_depth_frame"/>
+  <joint name="robot_namespace/camera2_depth_optical_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" -1.570796 0.000000 -1.570796"/>
+    <parent link="robot_namespace/camera2_depth_frame"/>
+    <child link="robot_namespace/camera2_depth_optical_frame" />
+  </joint>
+  <link name="robot_namespace/camera2_depth_optical_frame"/>
+  <joint name="robot_namespace/camera2_infra1_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera2_link"/>
+    <child link="robot_namespace/camera2_infra1_frame" />
+  </joint>
+  <link name="robot_namespace/camera2_infra1_frame"/>
+  <joint name="robot_namespace/camera2_infra1_optical_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" -1.570796 0.000000 -1.570796"/>
+    <parent link="robot_namespace/camera2_infra1_frame"/>
+    <child link="robot_namespace/camera2_infra1_optical_frame" />
+  </joint>
+  <link name="robot_namespace/camera2_infra1_optical_frame"/>
+  <joint name="robot_namespace/camera2_infra2_joint" type="fixed">
+    <origin xyz=" 0.000000 -0.050000 0.000000" rpy=" 0.000000 0.000000 0.000000"/>
+    <parent link="robot_namespace/camera2_link"/>
+    <child link="robot_namespace/camera2_infra2_frame" />
+  </joint>
+  <link name="robot_namespace/camera2_infra2_frame"/>
+  <joint name="robot_namespace/camera2_infra2_optical_joint" type="fixed">
+    <origin xyz=" 0.000000 0.000000 0.000000" rpy=" -1.570796 0.000000 -1.570796"/>
+    <parent link="robot_namespace/camera2_infra2_frame"/>
+    <child link="robot_namespace/camera2_infra2_optical_frame" />
+  </joint>
+  <link name="robot_namespace/camera2_infra2_optical_frame"/>
+
+  <!-- Left Wheel -->
+  <joint name="robot_namespace/left_wheel_joint" type="continuous">
+    <origin xyz="0.000000 0.158100 0.000000" rpy="-1.570796 0.000000 0.000000"/>
+    <parent link="robot_namespace/base_link"/>
+    <child link="robot_namespace/left_wheel_link"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <link name="robot_namespace/left_wheel_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.030" radius="0.086500"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.030" radius="0.086500"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <!-- Right Wheel -->
+  <joint name="robot_namespace/right_wheel_joint" type="continuous">
+    <origin xyz="0.000000 -0.158100 0.000000" rpy="-1.570796 0.000000 0.000000"/>
+    <parent link="robot_namespace/base_link"/>
+    <child link="robot_namespace/right_wheel_link"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <link name="robot_namespace/right_wheel_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.030" radius="0.086500"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.030" radius="0.086500"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
+  </link>
+</robot>
+
+<!--ros2 launch urdf_tutorial display.launch.py model:=/home/rgt/.ros/.setting/model/robot_test.urdf namespace:=robot-->

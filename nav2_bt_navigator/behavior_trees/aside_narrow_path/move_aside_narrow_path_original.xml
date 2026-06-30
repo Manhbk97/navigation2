@@ -1,0 +1,260 @@
+<!--
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  BEHAVIOR TREE SUMMARY                                                       │
+│                                                                              │
+│  RecoveryNode (10 retries)                                                  │
+│   ├─ [Child 1] PipelineSequence                                              │
+│   │   ├─ ControllerSelector / PlannerSelector   always SUCCESS               │
+│   │   ├─ RateController @ 1 Hz                                               │
+│   │   │   └─ RecoveryNode → ComputePathToPose → {path}  (keeps path fresh)  │
+│   │   └─ ReactiveFallback  [re-evaluates Tick-1 every BT cycle]              │
+│   │       │                                                                  │
+│   │       ├─ [Tick-1] ReactiveSequence [NarrowPathHandler]                  │
+│   │       │     HumanInNarrowPath re-checked EVERY tick (child-0).           │
+│   │       │     FAILURE → handler exits immediately, FollowPath resumes.     │
+│   │       │   └─ Sequence [AsideExecutor]  (has MEMORY: steps run once)      │
+│   │       │         ├─ SetCostmapInflation local  0.25  ← enter narrow mode  │
+│   │       │         ├─ SetCostmapInflation global 0.25                       │
+│   │       │         ├─ Fallback [FindWaitGoal]                               │
+│   │       │         │   ├─ SearchLocalGoalAside → {wait_goal}  (60° right)  │
+│   │       │         │   ├─ SetGoalFromLocation  → {wait_goal}  (YAML)        │
+│   │       │         │   └─ KeepRunningUntilFailure(HumanInNarrowPath)        │
+│   │       │         │         no goal found → hold in place until human gone │
+│   │       │         ├─ RecoveryNode → ComputePathToPose → {wait_path}        │
+│   │       │         ├─ RecoveryNode → FollowPath {wait_path}                 │
+│   │       │         └─ KeepRunningUntilFailure(HumanInNarrowPath)            │
+│   │       │               hold at side; ReactiveSequence handles exit         │
+│   │       │                                                                  │
+│   │       └─ [Tick-2] Sequence [RestoreAndFollow]  (has MEMORY)              │
+│   │             ├─ SetCostmapInflation local  0.45  ← restore on re-entry    │
+│   │             ├─ SetCostmapInflation global 0.55                           │
+│   │             └─ RecoveryNode → FollowPath {path}  ← normal navigation    │
+│   │                                                                          │
+│   └─ [Child 2] Recovery subtree (clear costmaps / wait)                      │
+│                                                                              │
+│  SCENARIO A — no human                                                       │
+│    HumanInNarrowPath FAILURE → ReactiveSequence FAILURE                      │
+│    RestoreAndFollow: SetInflation(0.45/0.55) once → FollowPath {path}        │
+│                                                                              │
+│  SCENARIO B — human detected                                                 │
+│    ReactiveSequence: AsideExecutor runs once per episode                     │
+│      1. Reduce inflation (0.25/0.25)                                         │
+│      2. Find side goal (SearchLocalGoalAside or SetGoalFromLocation)         │
+│      3. ComputePathToPose → {wait_path}                                      │
+│      4. FollowPath {wait_path}  — drive to side                              │
+│      5. KeepRunningUntilFailure — hold; HumanInNarrowPath checked reactively │
+│    Human leaves at ANY step → ReactiveSequence FAILURE immediately           │
+│    → RestoreAndFollow: SetInflation(0.45/0.55) → FollowPath {path}           │
+│       ({path} is fresh — kept by RateController @ 1 Hz)                     │
+│                                                                              │
+│  SCENARIO C — human present, no goal found                                   │
+│    KeepRunningUntilFailure(HumanInNarrowPath) in FindWaitGoal: hold in place │
+│    Human leaves → FAILURE chain → RestoreAndFollow → normal nav              │
+└─────────────────────────────────────────────────────────────────────────────┘
+-->
+
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="10" name="NavigateRecovery">
+
+      <!-- ═══ CHILD 1: Normal navigation pipeline ═══ -->
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector
+          selected_controller="{selected_controller}"
+          default_controller="DWB"
+          topic_name="controller_selector"/>
+        <PlannerSelector
+          selected_planner="{selected_planner}"
+          default_planner="GridBased"
+          topic_name="planner_selector"/>
+
+        <!--
+          ComputePathToPose @ 1 Hz keeps {path} continuously fresh — including
+          while the robot is in narrow-path handling mode.  When normal
+          navigation resumes, FollowPath immediately has a valid path from
+          the robot's current position (the wait place) to the original goal.
+        -->
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose
+              goal="{goal}"
+              path="{path}"
+              planner_id="{selected_planner}"
+              error_code_id="{compute_path_error_code}"/>
+            <Sequence>
+              <PlannerSelector
+                selected_planner="{selected_planner}"
+                default_planner="GridBased"
+                topic_name="planner_selector"/>
+              <SetCostmapInflationRadius
+                service_name="local_costmap/local_costmap/set_parameters"
+                inflation_radius="0.45"
+                param_name="inflation_layer.inflation_radius"/>
+              <SetCostmapInflationRadius
+                service_name="global_costmap/global_costmap/set_parameters"
+                inflation_radius="0.55"
+                param_name="inflation_layer.inflation_radius"/>
+              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+              <ClearEntireCostmap
+                name="ClearGlobalCostmap-Context"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+        </RateController>
+
+        <!--
+          ReactiveFallback ticks Tick-1 (NarrowPathHandler) FIRST on every
+          BT cycle:
+            HumanInNarrowPath SUCCESS  →  NarrowPathHandler runs, Tick-2 halted
+            HumanInNarrowPath FAILURE  →  NarrowPathHandler fails, Tick-2 runs
+        -->
+        <ReactiveFallback name="FollowOrHandleNarrowPath">
+
+          <!-- ══════════════════════════════════════════════════════════════
+               Tick-1: NarrowPath handler
+               ReactiveSequence:  child-0 (HumanInNarrowPath) is re-ticked
+               every BT cycle.  FAILURE at any point halts AsideExecutor
+               immediately — no ResetPath / ForceFailure needed.
+               ══════════════════════════════════════════════════════════════ -->
+          <ReactiveSequence name="NarrowPathHandler">
+
+            <!-- child-0: guard — checked on EVERY tick -->
+            <HumanInNarrowPath/>
+
+            <!-- child-1: plain Sequence WITH MEMORY
+                 Each step runs only ONCE per narrow-path episode.
+                 Steps are not re-started until this Sequence is halted
+                 (i.e. when human leaves and ReactiveSequence fails). -->
+            <Sequence name="AsideExecutor">
+
+              <!-- Step 1: reduce costmap inflation for tight corridor -->
+              <SetCostmapInflationRadius
+                service_name="local_costmap/local_costmap/set_parameters"
+                inflation_radius="0.3"
+                param_name="inflation_layer.inflation_radius"/>
+              <SetCostmapInflationRadius
+                service_name="global_costmap/global_costmap/set_parameters"
+                inflation_radius="0.3"
+                param_name="inflation_layer.inflation_radius"/>
+
+              <!-- Step 2: find a side goal (three-tier priority, runs once) -->
+              <Fallback name="FindWaitGoal">
+                <!-- Option A: free cell ~60° right on the local costmap -->
+                <SearchLocalGoalAside
+                  goal="{wait_goal}"/>
+                <!-- Option B: pre-defined YAML location -->
+                <!-- <SetGoalFromLocation
+                  location_file="/home/rgt/rgt2_ws/src/rgt_navigation3/rgt_nav3_launch/cfg/location.yaml"
+                  loc="location1"
+                  goal="{wait_goal}"/> -->
+                <!-- Option C: no goal found — hold in place until human leaves.
+                     KeepRunningUntilFailure → RUNNING (human present)
+                                             → FAILURE (human gone)
+                     FAILURE propagates: FindWaitGoal FAILURE → AsideExecutor FAILURE
+                     → ReactiveSequence FAILURE → go to Tick-2 (restore & follow) -->
+                <KeepRunningUntilFailure>
+                  <HumanInNarrowPath/>
+                </KeepRunningUntilFailure>
+              </Fallback>
+
+              <!-- Step 3: plan path to side goal (once) -->
+              <RecoveryNode number_of_retries="1" name="ComputePathToWait">
+                <ComputePathToPose
+                  goal="{wait_goal}"
+                  path="{wait_path}"
+                  planner_id="{selected_planner}"
+                  error_code_id="{compute_path_error_code}"/>
+                <Sequence>
+                  <ClearEntireCostmap
+                    name="ClearGlobalCostmap-WaitPlan"
+                    service_name="global_costmap/clear_entirely_global_costmap"/>
+                </Sequence>
+              </RecoveryNode>
+
+              <!-- Step 4: drive to side goal (once) -->
+              <RecoveryNode number_of_retries="1" name="FollowPathToWait">
+                <FollowPath
+                  path="{wait_path}"
+                  controller_id="{selected_controller}"
+                  error_code_id="{follow_path_error_code}"/>
+                <Sequence>
+                  <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                  <ClearEntireCostmap
+                    name="ClearLocalCostmap-Wait"
+                    service_name="local_costmap/clear_entirely_local_costmap"/>
+                </Sequence>
+              </RecoveryNode>
+
+              <!-- Step 5: hold at side goal.
+                   Keeps AsideExecutor RUNNING so it does not restart.
+                   ReactiveSequence (parent) re-checks HumanInNarrowPath
+                   every tick — when human leaves, ReactiveSequence returns
+                   FAILURE before this node even gets ticked. -->
+              <KeepRunningUntilFailure>
+                <HumanInNarrowPath/>
+              </KeepRunningUntilFailure>
+
+            </Sequence>
+          </ReactiveSequence>
+
+
+          <!-- ══════════════════════════════════════════════════════════════
+               Tick-2: restore inflation + normal navigation
+               Plain Sequence WITH MEMORY:
+                 - SetInflation runs only once on (re-)entry to this branch.
+                 - FollowPath runs continuously until goal reached or human
+                   re-appears (which halts and resets this Sequence).
+               ══════════════════════════════════════════════════════════════ -->
+          <Sequence name="RestoreAndFollow">
+
+            <!-- Restore nominal inflation (runs once per re-entry) -->
+            <SetCostmapInflationRadius
+              service_name="local_costmap/local_costmap/set_parameters"
+              inflation_radius="0.45"
+              param_name="inflation_layer.inflation_radius"/>
+            <SetCostmapInflationRadius
+              service_name="global_costmap/global_costmap/set_parameters"
+              inflation_radius="0.55"
+              param_name="inflation_layer.inflation_radius"/>
+
+            <!-- Follow the main path ({path} kept fresh by RateController @ 1 Hz) -->
+            <RecoveryNode number_of_retries="1" name="FollowPath">
+              <FollowPath
+                path="{path}"
+                controller_id="{selected_controller}"
+                error_code_id="{follow_path_error_code}"/>
+              <Sequence>
+                <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                <ClearEntireCostmap
+                  name="ClearLocalCostmap-Context"
+                  service_name="local_costmap/clear_entirely_local_costmap"/>
+              </Sequence>
+            </RecoveryNode>
+
+          </Sequence>
+
+
+        </ReactiveFallback>
+      </PipelineSequence>
+
+      <!-- ═══ CHILD 2: Recovery subtree ═══ -->
+      <Sequence>
+        <Fallback>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+        </Fallback>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="ClearingActions">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+            <Wait wait_duration="3.0"/>
+          </RoundRobin>
+        </ReactiveFallback>
+      </Sequence>
+
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

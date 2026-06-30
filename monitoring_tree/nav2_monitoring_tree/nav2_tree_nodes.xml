@@ -1,0 +1,166 @@
+<?xml version="1.0"?>
+<!--
+  TreeNodesModel for nav2_monitoring_tree — goal-arrival monitor.
+
+  Load this file in Groot → "Load palette" to get port autocompletion when
+  editing navigate_to_pose_w_infinite_replanning_and_near_goal_recovery.xml.
+
+  All nodes are monitoring / passive: they observe Nav2 via ROS topics and TF
+  rather than sending commands to the robot.
+
+  Plugins are loaded at runtime by monitoring_nav2_goal_arrival from the
+  nav2_monitoring_tree package (lib/libnav2_monitoring_tree_*.so).
+-->
+<root BTCPP_format="3">
+  <TreeNodesModel>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         ACTION NODES
+         ═══════════════════════════════════════════════════════════════════ -->
+
+    <!-- Observes /(<ns>/)compute_path_to_pose/_action/status -->
+    <Action ID="ComputePathToPose">
+      <input_port  name="goal">Destination to plan to (blackboard key)</input_port>
+      <input_port  name="start">Optional start pose override</input_port>
+      <input_port  name="planner_id">Mapped planner plugin name</input_port>
+      <input_port  name="server_name">Action server name</input_port>
+      <input_port  name="server_timeout">Server timeout</input_port>
+      <output_port name="path">Blackboard key written to "computed" on SUCCESS</output_port>
+      <output_port name="error_code_id">Compute-path error code</output_port>
+    </Action>
+
+    <!-- Observes /(<ns>/)follow_path/_action/status -->
+    <Action ID="FollowPath">
+      <input_port  name="path">Path blackboard key</input_port>
+      <input_port  name="controller_id">Controller plugin name</input_port>
+      <input_port  name="goal_checker_id">Goal-checker plugin name</input_port>
+      <input_port  name="progress_checker_id">Progress-checker plugin name</input_port>
+      <input_port  name="server_name">Action server name</input_port>
+      <input_port  name="server_timeout">Server timeout</input_port>
+      <output_port name="error_code_id">Follow-path error code</output_port>
+    </Action>
+
+    <!-- Subscribes to /(<ns>/)controller_selector (transient-local) -->
+    <Action ID="ControllerSelector">
+      <input_port  name="topic_name">Topic for controller selection commands</input_port>
+      <input_port  name="default_controller">Fallback controller name</input_port>
+      <output_port name="selected_controller">Active controller name</output_port>
+    </Action>
+
+    <!-- Subscribes to /(<ns>/)planner_selector (transient-local) -->
+    <Action ID="PlannerSelector">
+      <input_port  name="topic_name">Topic for planner selection commands</input_port>
+      <input_port  name="default_planner">Fallback planner name</input_port>
+      <output_port name="selected_planner">Active planner name</output_port>
+    </Action>
+
+    <!-- Monitoring stub: returns SUCCESS if path blackboard key is non-empty -->
+    <Action ID="TruncatePath">
+      <input_port  name="distance">Distance before goal to truncate</input_port>
+      <input_port  name="input_path">Path to truncate (blackboard key)</input_port>
+      <output_port name="output_path">Truncated path blackboard key</output_port>
+    </Action>
+
+    <!-- TF lookup: robot_base_frame → global_frame.
+         Frames resolved via: XML port → ROS param → namespace-derived default
+           global_frame     = "map"
+           robot_base_frame = "<ns>/base_footprint" (or "base_footprint") -->
+    <Action ID="GetCurrentPose">
+      <input_port  name="global_frame">Global TF frame (default derived from namespace)</input_port>
+      <input_port  name="robot_base_frame">Robot base TF frame (default derived from namespace)</input_port>
+      <input_port  name="transform_tolerance">TF lookup timeout in seconds (default 0.1)</input_port>
+      <output_port name="current_pose">Current robot PoseStamped</output_port>
+    </Action>
+
+    <!-- Observes /(<ns>/)spin/_action/status -->
+    <Action ID="Spin">
+      <input_port  name="spin_dist">Target yaw rotation in radians</input_port>
+      <output_port name="error_code_id">Spin error code</output_port>
+    </Action>
+
+    <!-- Observes /(<ns>/)wait/_action/status -->
+    <Action ID="Wait">
+      <input_port name="wait_duration">Wait time in seconds</input_port>
+    </Action>
+
+    <!-- Observes /(<ns>/)backup/_action/status -->
+    <Action ID="BackUp">
+      <input_port  name="backup_dist">Backup distance in metres</input_port>
+      <input_port  name="backup_speed">Backup speed in m/s</input_port>
+      <output_port name="error_code_id">BackUp error code</output_port>
+    </Action>
+
+    <!-- Monitoring stub: always returns SUCCESS (service calls not observable) -->
+    <Action ID="ClearEntireCostmap">
+      <input_port name="service_name">Costmap clear service name (not called)</input_port>
+    </Action>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         CONDITION NODES
+         ═══════════════════════════════════════════════════════════════════ -->
+
+    <!-- Monitoring stub: always SUCCESS (error codes not observed via status topic) -->
+    <Condition ID="WouldAControllerRecoveryHelp">
+      <input_port name="error_code">Follow-path error code (not inspected)</input_port>
+    </Condition>
+
+    <!-- Monitoring stub: always SUCCESS -->
+    <Condition ID="WouldAPlannerRecoveryHelp">
+      <input_port name="error_code">Planner error code (not inspected)</input_port>
+    </Condition>
+
+    <!-- Returns SUCCESS on the tick after the "goal" blackboard key changes -->
+    <Condition ID="GoalUpdated"/>
+
+    <!-- Returns SUCCESS when Euclidean XY distance between poses <= tolerance -->
+    <Condition ID="ArePosesNear">
+      <input_port name="ref_pose">Reference PoseStamped (blackboard key)</input_port>
+      <input_port name="target_pose">Target PoseStamped (blackboard key)</input_port>
+      <input_port name="tolerance" default="0.5">Distance threshold in metres</input_port>
+    </Condition>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         CONTROL NODES
+         ═══════════════════════════════════════════════════════════════════ -->
+
+    <!-- Ticks all children every tick; FAILURE if any child fails -->
+    <Control ID="PipelineSequence"/>
+
+    <!-- Retries main child up to number_of_retries times with recovery child -->
+    <Control ID="RecoveryNode">
+      <input_port name="number_of_retries" default="1">Max recovery retries</input_port>
+    </Control>
+
+    <!-- Cycles through children; SUCCESS on first child that succeeds -->
+    <Control ID="RoundRobin"/>
+
+    <!-- BTcpp v3 SequenceStar: remembers successful children across ticks -->
+    <Control ID="SequenceWithMemory"/>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         DECORATOR NODES
+         ═══════════════════════════════════════════════════════════════════ -->
+
+    <!-- Limits child execution to the specified rate in Hz -->
+    <Decorator ID="RateController">
+      <input_port name="hz" default="1.0">Tick rate in Hz</input_port>
+    </Decorator>
+
+    <!-- Subscribes to /(<ns>/)goal_update; passes updated goal to child -->
+    <Decorator ID="GoalUpdater">
+      <input_port  name="input_goal">Input goal (blackboard key)</input_port>
+      <output_port name="output_goal">Updated goal (blackboard key)</output_port>
+    </Decorator>
+
+    <!-- Suppresses recovery child if robot has not moved >= min_distance
+         since the last trigger.  Uses TF for pose lookup.
+         Frames resolved via: XML port → ROS param → namespace-derived default -->
+    <Decorator ID="RecoveryOncePerLocation">
+      <input_port name="min_distance"        default="0.3">Min travel distance (m) between recovery events</input_port>
+      <input_port name="global_frame">Global TF frame (default derived from namespace)</input_port>
+      <input_port name="robot_base_frame">Robot base TF frame (default derived from namespace)</input_port>
+      <input_port name="transform_tolerance" default="0.1">TF lookup timeout in seconds</input_port>
+    </Decorator>
+
+  </TreeNodesModel>
+</root>

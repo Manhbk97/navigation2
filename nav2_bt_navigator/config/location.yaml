@@ -1,0 +1,28 @@
+# Wait locations for GoToPose BT node.
+# When navigation fails, the robot recovers by driving to one of these poses.
+#
+# "loc" port in the BT XML can be:
+#   - a named key (e.g. loc="location1")
+#   - "closest"  → the nearest location to the robot is chosen automatically
+#
+# Fields:
+#   x, y : position in the global (map) frame  [metres]
+#   yaw  : heading                              [radians]
+
+locations:
+  location1:
+    x: 7.5
+    y: 26.4
+    yaw: 3.14
+  location2:
+    x: 5.3
+    y: 36.1
+    yaw: -1.04
+  location3:
+    x: 9.39
+    y: 23.7
+    yaw: 1.57
+  location4:
+    x: 5.3
+    y: 36.1
+    yaw: -1.04

@@ -1,0 +1,431 @@
+# robot_config.yaml — Tutorial
+
+This file is the main Nav2 parameter file for the robot. It configures every
+node in the navigation stack: localization, costmaps, planner, controller,
+behaviors, smoother, recovery, docking, sensor filtering, and the collision /
+safety layer.
+
+Path: [robot_config.yaml](robot_config.yaml)
+
+> **Placeholders.** The file contains tokens that are substituted at launch
+> time:
+> - `<robot_namespace>` → robot namespace, e.g. `sirbot1`
+> - `<frame_namespace>` → TF frame prefix, e.g. `sirbot1`
+> - `<footprint>` → robot footprint polygon string
+>
+> Do **not** keep these literal `<...>` strings in a deployed file — the launch
+> system rewrites them. If you copy this file by hand, replace them yourself.
+
+---
+
+## Table of contents
+
+1. [amcl](#1-amcl) — localization
+2. [bt_navigator](#2-bt_navigator) — behavior-tree navigator
+3. [controller_server](#3-controller_server) — local controller (Rotation Shim + RPP)
+4. [local_costmap / global_costmap](#4-costmaps) — obstacle and inflation layers
+5. [map_saver](#5-map_saver)
+6. [planner_server](#6-planner_server) — global planner (NavFn)
+7. [smoother_server](#7-smoother_server)
+8. [behavior_server](#8-behavior_server) — recovery behaviors
+9. [waypoint_follower](#9-waypoint_follower)
+10. [velocity_smoother](#10-velocity_smoother)
+11. [collision_monitor](#11-collision_monitor)
+12. [safety_filter](#12-safety_filter)
+13. [docking_server](#13-docking_server)
+14. [charger_dock_detector / jvm_dock_detector](#14-dock-detectors)
+15. [lidar_filter_node / sensor_filter_node](#15-sensor-filtering)
+16. [interface_node](#16-interface_node)
+
+---
+
+## 1. amcl
+
+Adaptive Monte Carlo Localization. Estimates the robot pose on the map by
+matching laser scans against the static map.
+
+Key parameters:
+
+| Parameter | Meaning |
+|---|---|
+| `alpha1..alpha5` | Odometry noise model (rot/trans). Lower = trust odom more. |
+| `min_particles` / `max_particles` | Particle filter size. More particles = more robust, more CPU. |
+| `laser_model_type` | `likelihood_field` is the recommended sensor model. |
+| `laser_max_range` / `laser_min_range` | Clip lidar range used by AMCL. |
+| `max_beams` | Number of beams subsampled per scan (160 is a good balance). |
+| `update_min_d` / `update_min_a` | Robot must travel this far (m / rad) before AMCL updates. |
+| `transform_tolerance` | Allowed staleness of TF, in seconds. |
+| `z_hit / z_max / z_rand / z_short` | Mixture weights of the beam model. Must sum to ~1. |
+| `robot_model_type` | Differential drive in this config. Use `OmniMotionModel` for omni bases. |
+| `set_initial_pose` / `initial_pose` | If `true`, AMCL boots at the given pose instead of waiting for `/initialpose`. |
+| `scan_topic` | Filtered scan topic — must match the output of `sensor_filter_node`. |
+
+Frames:
+- `global_frame_id: map`
+- `odom_frame_id: <frame_namespace>/ekf_odom` — fused odometry from EKF
+- `base_frame_id: <frame_namespace>/base_footprint`
+
+**Tuning tips**
+- If localization jitters when standing still: lower `alpha1..alpha4`.
+- If localization "snaps" wrongly during turns: increase `alpha1, alpha2`.
+- Drop `max_particles` if CPU is a bottleneck.
+
+---
+
+## 2. bt_navigator
+
+Runs the Behavior Tree that orchestrates planning, control, and recoveries.
+
+- `navigators: [navigate_to_pose, navigate_through_poses]` — two action servers
+  are exposed.
+- The default BT XMLs (`navigate_to_pose_w_replanning_and_recovery.xml` and
+  `navigate_through_poses_w_replanning_and_recovery.xml`) are used. To plug a
+  custom tree, set `default_nav_to_pose_bt_xml` / `default_nav_through_poses_bt_xml`.
+- `error_code_names` — error codes propagated from sub-action servers; useful
+  for the BT to branch on planner / controller failure.
+
+---
+
+## 3. controller_server
+
+Runs the local controller at `controller_frequency: 20.0 Hz`.
+
+### Progress / Goal checkers
+- `progress_checker` — fails if the robot does not move
+  `required_movement_radius` (0.5 m) within `movement_time_allowance` (10 s).
+- `goal_checker`:
+  - `xy_goal_tolerance: 0.15` (m)
+  - `yaw_goal_tolerance: 0.0873` rad ≈ 5°
+  - `stateful: true` — once xy is satisfied, only yaw is rechecked.
+
+### FollowPath — Rotation Shim + Regulated Pure Pursuit
+
+The active controller wraps Regulated Pure Pursuit (RPP) inside a Rotation
+Shim. The shim rotates the robot in place toward the path heading first, then
+hands off to RPP for following.
+
+Shim parameters (apply only while rotating-in-place):
+
+| Parameter | Meaning |
+|---|---|
+| `angular_dist_threshold: 1.8` | Heading error (rad) above which the shim takes over. |
+| `forward_sampling_distance: 0.5` | Look this far along the path to compute the desired heading. |
+| `rotate_to_heading_angular_vel: 1.2` | Angular velocity used while rotating-in-place. |
+| `max_angular_accel: 1.5` | Angular accel limit during the rotation. |
+| `rotate_to_heading_once: true` | Only rotate at the start of a new path. |
+| `rotate_to_goal_heading: true` | At the end, rotate to match the goal yaw. |
+
+Pure-Pursuit parameters (apply during path following):
+
+| Parameter | Meaning |
+|---|---|
+| `desired_linear_vel: 0.6` | Target forward speed (m/s). |
+| `lookahead_dist`, `min_lookahead_dist`, `max_lookahead_dist` | Carrot distance. Smaller = tighter turns, more oscillation. |
+| `lookahead_time: 0.5` | Used only if `use_velocity_scaled_lookahead_dist: true`. |
+| `transform_tolerance: 0.3` | TF age tolerance. |
+| `allow_reversing: false` | Robot only moves forward. |
+| `use_*_scaling: false` | Velocity / cost scaling is disabled in this config. Enable to slow down near obstacles or in tight curves. |
+
+> The `goal_digoalst_tol` line near the end is a typo in the YAML and is
+> ignored. Safe to remove.
+
+To switch to MPPI: comment out the RPP `primary_controller` and uncomment the
+`nav2_mppi_controller::MPPIController` line. MPPI requires its own parameter
+block (see other YAMLs in this folder).
+
+---
+
+## 4. Costmaps
+
+### local_costmap (rolling)
+- Frame: `<frame_namespace>/ekf_odom` (odom frame — never jumps).
+- Size: 6 × 6 m, resolution 0.025 m, rolling window centered on the robot.
+- Layers: `obstacle_layer`, `inflation_layer`.
+- Footprint comes from the `<footprint>` placeholder.
+- `inflation_radius: 0.4` m, `cost_scaling_factor: 5.0` — strong falloff.
+
+### global_costmap (static)
+- Frame: `map`.
+- Layers: `static_layer`, `obstacle_layer`, `inflation_layer`.
+- `inflation_radius: 0.55` m.
+- `track_unknown_space: true` — unknown cells are not assumed free.
+
+### Observation sources (both costmaps)
+- `scan` — 2D lidar at `<robot_namespace>/scan_filtered`. Marks and clears.
+- `top_camera` — depth points at `camera1/depth/points_filtered`.
+- `bottom_camera` — depth points at `camera2/depth/points_filtered`.
+
+For each source `clearing: true` and `marking: true`. `raytrace_max_range`
+controls how far a free ray clears stale obstacles. Generally:
+`raytrace_max_range > obstacle_max_range`.
+
+**Tuning tips**
+- Dynamic obstacles linger → increase `raytrace_max_range` or check that
+  `clearing: true` and the source frame TF is stable.
+- Robot scrapes walls → increase `inflation_radius`.
+- Costmap CPU spikes → raise `resolution` (e.g. 0.05) or shrink the local
+  window.
+
+---
+
+## 5. map_saver
+
+Used by `nav2_map_server` to dump the current map. Defaults are sensible:
+free threshold 0.25, occupied 0.65.
+
+---
+
+## 6. planner_server
+
+Global planner. Active plugin is `nav2_navfn_planner::NavfnPlanner`
+(Dijkstra by default; A\* if `use_astar: true`).
+
+| Parameter | Meaning |
+|---|---|
+| `interpolation_resolution: 0.1` | Spacing of waypoints in the planned path. |
+| `tolerance: 0.01` | Goal tolerance for the planner (m). |
+| `allow_unknown: true` | Plans through unknown cells if needed. |
+| `expected_planner_frequency: 1.0` | Used to warn if planning is slow. |
+
+Other commented options: `nav2_smac_planner::SmacPlannerHybrid` (kinodynamic,
+better for car-like robots) and a custom `rgt_nav3_router::GraphRouter`.
+
+---
+
+## 7. smoother_server
+
+`nav2_smoother::SimpleSmoother` cleans up planner output. Use the default
+unless paths look jagged — then increase `max_its` or `do_refinement`.
+
+---
+
+## 8. behavior_server
+
+Recovery and utility behaviors triggered by the BT.
+- `spin`, `backup`, `drive_on_heading`, `assisted_teleop`, `wait`.
+- `cycle_frequency: 10.0` Hz.
+- `simulate_ahead_time: 2.0` — collision lookahead while executing recoveries.
+- `max_rotational_vel: 1.0`, `rotational_acc_lim: 1.5`.
+
+---
+
+## 9. waypoint_follower
+
+Sequential goal executor.
+- `stop_on_failure: false` — skip a failed waypoint and continue.
+- `wait_at_waypoint` task plugin is configured but `enabled: false`.
+
+---
+
+## 10. velocity_smoother
+
+Smooths controller cmd_vel before sending to the base.
+
+| Parameter | Meaning |
+|---|---|
+| `smoothing_frequency: 20.0` | Output rate. |
+| `max_velocity: [1.0, 0.0, 1.5]` | Max [vx, vy, wz]. Lateral is 0 → diff drive. |
+| `min_velocity: [-1.0, 0.0, -1.5]` | Reverse limits. |
+| `max_accel: [0.4, 0.0, 1.5]` | Acceleration cap. |
+| `max_decel: [-0.8, 0.0, -1.5]` | Deceleration (must be negative). |
+| `velocity_timeout: 1.0` | Output zero if no new cmd in 1 s. |
+| `feedback: OPEN_LOOP` | Smoother does not consult odometry. |
+
+These limits should match the physical capabilities of the base **and** be
+≥ the limits used inside the controller; otherwise the controller will fight
+the smoother.
+
+---
+
+## 11. collision_monitor
+
+Independent safety layer that watches the lidar and modulates the cmd_vel
+stream. Reads `cmd_vel_smoothed`, publishes `key_vel`.
+
+Two zones are defined:
+- **PolygonStop** — tight contour around the robot. If ≥ `min_points: 4`
+  laser points fall inside, output is forced to zero.
+- **PolygonSlow** — outer rectangle (0.45 × 0.35 m). Speed is multiplied by
+  `slowdown_ratio: 0.7` when triggered.
+
+Both zones publish to `polygon_stop` and `polygon_slowdown` for visualization
+in RViz.
+
+`observation_sources: [scan]` — only the filtered 2D lidar feeds this node.
+
+---
+
+## 12. safety_filter
+
+Custom node downstream of the collision monitor.
+- Reads `key_vel`, publishes `filtered_key_vel`.
+- Watches `pause`, `estop`, `mcu/imu_raw`.
+- `slope_threshold_degrees: 5.0` — refuses to drive on slopes steeper than 5°.
+- `cmd_timeout: 0.5` — zero output if upstream is silent for 500 ms.
+- `pause_flat_timeout: 2.0` — required flat time before resuming after pause.
+
+---
+
+## 13. docking_server
+
+`opennav_docking` server. Handles approach, docking, and undocking.
+
+Top-level:
+- `controller_frequency: 20.0`
+- `dock_approach_timeout: 60.0` — hard cap on the docking phase.
+- `undock_linear_tolerance: 0.05`, `undock_angular_tolerance: 0.1`.
+- `max_retries: 3`.
+- `navigate_to_staging_pose: true` — first navigate to the staging pose, then
+  hand off to the dock controller.
+
+### Dock plugins
+- `FrontDock` and `ChargeDock`, both `SimpleNonChargingDock`.
+- `staging_x_offset` — distance behind the dock where staging starts
+  (negative = behind). FrontDock uses `-0.85`, ChargeDock `-0.75`.
+- `use_external_detection_pose: true` — the dock pose comes from a detector
+  node (see below), not from a fixed map pose.
+- `use_battery_status` and `use_stall_detection` are off in this config —
+  enable on the real robot for end-of-charge / stall detection.
+
+### Dock instances
+- One dock declared: `jvm_dock` of type `FrontDock`, located in the `map`
+  frame at `[5.0, 8.0, 0.0]`.
+
+### Inner dock controller
+- `k_phi: 0.3`, `k_delta: 5.0` — graceful-controller gains.
+- `v_linear_min/max: 0.15`, `v_angular_max: 0.5`.
+- `slowdown_radius: 0.5` — start slowing 0.5 m before the dock.
+- `use_collision_detection: true`.
+
+---
+
+## 14. Dock detectors
+
+### charger_dock_detector
+Detects a passive V-shaped reflector with the lidar.
+- Polar ROI: range 0.0–1.2 m, angle ±80°.
+- Line segmentation: `min_line_length: 0.05`, `split_threshold: 0.02`.
+- V-arm filter: arm length 0.07–0.15 m (about a 10.7 cm physical arm).
+- `apex_proximity_tolerance: 0.10`, `standoff_distance: 0.30` — the published
+  detected_dock_pose is 30 cm in front of the apex.
+- Tracking: `max_lost_frames: 25` before the dock is declared lost.
+- `is_docking_active: false` for the real robot, `true` only for static
+  testing.
+
+### jvm_dock_detector
+Detects a dock by reflective markers on its back wall.
+- `intensity_threshold: 210.0` — points above this are treated as reflectors.
+- `dock_width: 0.8`, `dock_length: 1.0` — physical geometry.
+- `target_from_dock_back: 0.45` — desired robot pose 45 cm in front of the
+  back wall.
+- `lateral_tolerance: 0.05` — 5 cm side error counts as aligned.
+
+---
+
+## 15. Sensor filtering
+
+### lidar_filter_node (legacy)
+Footprint-based filter. Drops scan points that fall inside the robot footprint
+plus `padding: 0.05` m. Subscribes to `<robot_namespace>/scan`, publishes
+`<robot_namespace>/scan_filtered`.
+
+### sensor_filter_node (preferred)
+Pluggable per-sensor filter pipeline. The active list is:
+
+```yaml
+sensors: ["2d_lidar"]
+```
+
+Top and bottom cameras are configured but not enabled. To enable, add them to
+the `sensors` list.
+
+Filter chain per sensor:
+- **footprint_filter** — drops points inside the robot footprint up to
+  `height: 1.5` m.
+- **angular_filter** — keeps / drops scan points by bearing. The active
+  `regions: "[[3.14, 2.0]]"` keeps a wide 360° sector (center 3.14 rad,
+  half-width 2.0 rad).
+- **fov_filter** (cameras only) — clip vertical/horizontal FOV.
+- **ground_filter** — drop points whose Z is within `ground_threshold`
+  (0.05 m) of the ground plane, allowing for `slope_tolerance`.
+- **ceiling_filter** (cameras) — drop points above `ceiling_threshold` (4.0 m).
+- **density_filter** — voxel-grid downsample. `voxel_size: 0.075`,
+  `max_points: 1` per voxel.
+
+> Disabled filters in the `2d_lidar` block (`ground_filter`, `density_filter`)
+> are kept enabled only for cameras.
+
+Topic flow for the lidar:
+```
+<robot_namespace>/scan  →  sensor_filter_node  →  <robot_namespace>/scan_filtered
+```
+This `scan_filtered` topic is what AMCL, costmaps, collision_monitor, and the
+dock detectors all consume.
+
+---
+
+## 16. interface_node
+
+Small helper node.
+- `update_rate: 10.0` Hz.
+- `dock_distance: 0.9` — distance threshold used by the dock UI.
+
+---
+
+## How everything plugs together
+
+```
+                 +-----------+      +--------------+
+   /scan  ---->  | sensor_   | ---> | scan_        | --> AMCL
+                 | filter    |      | filtered     | --> costmaps
+                 +-----------+      +--------------+ --> collision_monitor
+                                                    --> dock detectors
+
+   AMCL pose --> /tf (map → odom)
+   EKF odom --> /tf (odom → base_footprint)
+
+   bt_navigator --> planner_server --> path
+                --> controller_server (Rotation Shim + RPP)
+                --> behavior_server (recoveries)
+
+   controller cmd_vel
+        --> velocity_smoother (cmd_vel_smoothed)
+        --> collision_monitor  (key_vel)
+        --> safety_filter      (filtered_key_vel)
+        --> base driver
+```
+
+---
+
+## Common edits
+
+- **Change footprint.** Replace the `<footprint>` placeholder in the launch
+  rewrite, or hard-code a polygon string like
+  `"[[ 0.30, 0.25], [ 0.30, -0.25], [-0.30, -0.25], [-0.30, 0.25]]"` in every
+  `footprint:` field. Remember to update both costmaps, the collision monitor
+  zones, and the sensor filter footprints — they are independent.
+- **Slow the robot.** Lower `desired_linear_vel` (controller) **and**
+  `max_velocity[0]` (velocity_smoother). The smoother is the hard cap.
+- **Add a new dock.** Append it under `docks:` and add a matching block with
+  `type`, `frame`, `pose`. If it needs different gains, add a new entry to
+  `dock_plugins` and reference its name as `type:`.
+- **Switch global planner to Smac Hybrid.** Comment the NavFn plugin and
+  uncomment the `SmacPlannerHybrid` line. Smac requires extra parameters
+  (motion model, minimum turning radius, etc.) — see the Nav2 docs.
+- **Change the controller to MPPI.** In `FollowPath`, switch
+  `primary_controller` to `nav2_mppi_controller::MPPIController` and add the
+  MPPI parameter block (use one of the sibling `*.yaml` files as a template).
+
+---
+
+## References
+- Nav2 docs: <https://docs.nav2.org/>
+- Costmap 2D: <https://docs.nav2.org/configuration/packages/configuring-costmaps.html>
+- Collision Monitor tutorial:
+  <https://docs.nav2.org/tutorials/docs/using_collision_monitor.html>
+- Regulated Pure Pursuit:
+  <https://docs.nav2.org/configuration/packages/configuring-regulated-pp.html>
+- Rotation Shim Controller:
+  <https://docs.nav2.org/configuration/packages/configuring-rotation-shim.html>
+- AMCL:
+  <https://docs.nav2.org/configuration/packages/configuring-amcl.html>

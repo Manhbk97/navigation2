@@ -1,0 +1,819 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="sirbot">
+    <pose>0 0 0.0865 0 0 0</pose>
+
+
+    <!-- Base Footprint -->
+    <link name="robot_namespace/base_footprint">
+      <pose>0 0 -0.0865 0 0 0</pose>  <!-- 0.0865m below base_link -->
+      <inertial>
+        <mass>0.01</mass>  <!-- Negligible mass -->
+        <inertia>
+          <ixx>0.00001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00001</iyy>
+          <iyz>0</iyz>
+          <izz>0.00001</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- Base Link axcel -->
+    <link name="robot_namespace/base_link">
+      <pose>0 0 0.0 0 0 0</pose>
+      <inertial>
+        <mass>10.0</mass>
+        <inertia>
+          <ixx>1.8</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>1.8</iyy>
+          <iyz>0</iyz>
+          <izz>2.5</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/base_link_collision">
+        <geometry>
+          <sphere>
+            <radius>0.025</radius>
+          </sphere>
+        </geometry>
+      </collision>
+      <visual name="robot_namespace/base_link_visual">
+        <geometry>
+          <sphere>
+            <radius>0.025</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2 1</ambient>
+          <diffuse>0.3 0.3 0.3 1</diffuse>
+          <specular>0.5 0.5 0.5 1</specular>
+        </material>
+      </visual>
+    </link>
+
+        <!-- chassis -->
+    <link name="robot_namespace/chassis_link">
+      <pose>0 0 0.1 0 0 0</pose>
+      <inertial>
+        <mass>10.0</mass>
+        <inertia>
+          <ixx>1.8</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>1.8</iyy>
+          <iyz>0</iyz>
+          <izz>2.5</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/chassis_collision">
+        <geometry>
+          <box>
+            <size>0.0 0.0 0.0</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="robot_namespace/chassis_visual">
+        <geometry>
+          <polyline>
+            <point>0.255 0.1365</point>
+            <point>0.241 0.17806</point>
+            <point>0.185 0.2065</point>
+            <point>-0.185 0.2065</point>
+            <point>-0.24133 0.17806</point>
+            <point>-0.255 0.1365</point>
+            <point>-0.255 -0.1365</point>
+            <point>-0.24133 -0.17806</point>
+            <point>-0.185 -0.2065</point>
+            <point>0.185 -0.2065</point>
+            <point>0.24133 -0.17806</point>
+            <point>0.255 -0.1365</point>
+            <point>0.255 0.1365</point>
+            <height>0.015</height>
+          </polyline>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2 1</ambient>
+          <diffuse>0.3 0.3 0.3 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+<!-- axcel sahft -->
+    <link name="robot_namespace/axcel_shaft_link">
+      <pose>0 0 0.0 1.57079632679 0 0</pose>
+      <inertial>
+        <mass>10.0</mass>
+        <inertia>
+          <ixx>1.8</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>1.8</iyy>
+          <iyz>0</iyz>
+          <izz>2.5</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/axcel_shaft_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.01</radius>
+            <length>0.25</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="robot_namespace/axcel_shaft_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.01</radius>
+            <length>0.25</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2 1</ambient>
+          <diffuse>0.3 0.3 0.3 1</diffuse>
+          <specular>0.5 0.5 0.5 1</specular>
+        </material>
+      </visual>
+    </link>
+
+
+    <!-- Left Wheel -->
+    <link name="robot_namespace/left_wheel">
+      <pose>0 0.1581 0 -1.5708 0 0</pose>
+      <inertial>
+        <mass>2.5</mass>
+        <inertia>
+          <ixx>0.01</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.01</iyy>
+          <iyz>0</iyz>
+          <izz>0.018</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/left_wheel_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.0865</radius>
+            <length>0.04</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.5</mu>      <!-- High friction = good grip -->
+              <mu2>1.5</mu2>    <!-- Match for isotropic friction -->
+              <slip1>0.0</slip1>    <!-- Slip for mu -->
+              <slip2>0.0</slip2>    <!-- Slip for mu2 -->
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="robot_namespace/left_wheel_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.0865</radius>
+            <length>0.04</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.15 0.15 0.15 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+          <pbr>
+            <metal>
+              <roughness>0.9</roughness>   <!-- Very rough for rubber -->
+              <metalness>0.0</metalness>    <!-- Rubber is non-metallic -->
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+    </link>
+
+
+    <!-- Right Wheel -->
+    <link name="robot_namespace/right_wheel">
+      <pose>0 -0.1581 0 -1.5708 0 0</pose>
+      <inertial>
+        <mass>2.5</mass>
+        <inertia>
+          <ixx>0.01</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.01</iyy>
+          <iyz>0</iyz>
+          <izz>0.018</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/right_wheel_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.0865</radius>
+            <length>0.04</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="robot_namespace/right_wheel_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.0865</radius>
+            <length>0.04</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+
+    <!-- Caster Wheel Front Left -->
+    <link name="robot_namespace/caster_fl">
+      <pose>0.12975 0.09485 -0.04325 0 0 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/caster_fl_collision">
+        <geometry>
+          <sphere>
+            <radius>0.04325</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.01</mu>
+              <mu2>0.01</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="robot_namespace/caster_fl_visual">
+        <geometry>
+          <sphere>
+            <radius>0.04325</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.5 0.5 0.5 1</ambient>
+          <diffuse>0.7 0.7 0.7 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Caster Wheel Front Right -->
+    <link name="robot_namespace/caster_fr">
+      <pose>0.12975 -0.09485 -0.04325 0 0 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/caster_fr_collision">
+        <geometry>
+          <sphere>
+            <radius>0.04325</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.01</mu>
+              <mu2>0.01</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="robot_namespace/caster_fr_visual">
+        <geometry>
+          <sphere>
+            <radius>0.04325</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.5 0.5 0.5 1</ambient>
+          <diffuse>0.7 0.7 0.7 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Caster Wheel Rear Left -->
+    <link name="robot_namespace/caster_rl">
+      <pose>-0.12975 0.09485 -0.04325 0 0 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/caster_rl_collision">
+        <geometry>
+          <sphere>
+            <radius>0.04325</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.01</mu>
+              <mu2>0.01</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="robot_namespace/caster_rl_visual">
+        <geometry>
+          <sphere>
+            <radius>0.04325</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.5 0.5 0.5 1</ambient>
+          <diffuse>0.7 0.7 0.7 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Caster Wheel Rear Right -->
+    <link name="robot_namespace/caster_rr">
+      <pose>-0.12975 -0.09485 -0.04325 0 0 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/caster_rr_collision">
+        <geometry>
+          <sphere>
+            <radius>0.04325</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.01</mu>
+              <mu2>0.01</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="robot_namespace/caster_rr_visual">
+        <geometry>
+          <sphere>
+            <radius>0.04325</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.5 0.5 0.5 1</ambient>
+          <diffuse>0.7 0.7 0.7 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- LiDAR Link -->
+    <link name="robot_namespace/scan_link">
+      <pose>0.1449 0 0.1444 0 0 0</pose>
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/lidar_collision">
+        <geometry>
+          <cylinder>
+            <radius>0.04</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="robot_namespace/lidar_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.04</radius>
+            <length>0.05</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+      <sensor name="robot_namespace/lidar_sensor" type="gpu_lidar">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>10</update_rate>
+        <topic>/robot_namespace/lidar</topic>
+        <gz_frame_id>robot_namespace/scan_link</gz_frame_id>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1.0</resolution>
+              <min_angle>-3.14159</min_angle>
+              <max_angle>3.14159</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.12</min>
+            <max>12.0</max>
+            <resolution>0.015</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </ray>
+      </sensor>
+    </link>
+
+    <!-- Camera 1 (Front/Upper - angled down) -->
+    <link name="robot_namespace/camera1_link">
+      <!-- <pose>0.1795 0 0.9148 0 0.506145 0</pose> -->
+      <pose>0.1795 0 0.5480 0 0 0</pose>
+
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/camera1_collision">
+        <geometry>
+          <box>
+            <size>0.025 0.09 0.025</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="robot_namespace/camera1_visual">
+        <geometry>
+          <box>
+            <size>0.025 0.09 0.025</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2 1</ambient>
+          <diffuse>0.3 0.3 0.3 1</diffuse>
+        </material>
+      </visual>
+    <sensor name="robot_namespace/camera1_rgbd" type="rgbd_camera">
+      <pose>0 0 0 0 0 0</pose>
+      <topic>/robot_namespace/camera1</topic>
+      <update_rate>30</update_rate>
+      <!-- <gz_frame_id>robot_namespace/camera1_link</gz_frame_id> -->
+      <gz_frame_id>robot_namespace/camera1_depth_optical_frame</gz_frame_id>
+      <camera>
+        <horizontal_fov>1.211</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <depth_camera>
+          <clip>
+            <near>0.1</near>
+            <far>10</far>
+          </clip>
+        </depth_camera>
+        <clip>
+          <near>0.1</near>
+          <far>100</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.007</stddev>
+        </noise>
+      </camera>
+      <always_on>1</always_on>
+    </sensor>
+</link>  <!-- Make sure this closing tag exists -->
+
+    <!-- Camera 2 (Lower - angled down more) -->
+    <link name="robot_namespace/camera2_link">
+      <!-- <pose>0.2468 0 -0.0146 0 -1.064651 0</pose> -->
+      <pose>0.3068 0 -0.0146 0 -1.064651 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/camera2_collision">
+        <geometry>
+          <box>
+            <size>0.0 0.0 0.0</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="robot_namespace/camera2_visual">
+        <geometry>
+          <box>
+            <size>0.025 0.09 0.025</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.2 0.2 1</ambient>
+          <diffuse>0.3 0.3 0.3 1</diffuse>
+        </material>
+      </visual>
+      
+    <sensor name="robot_namespace/camera2_rgbd" type="rgbd_camera">
+      <pose>0 0 0 0 0 0</pose>
+      <topic>/robot_namespace/camera2</topic>
+      <update_rate>30</update_rate>
+      <gz_frame_id>robot_namespace/camera2_link</gz_frame_id>
+      <camera>
+        <horizontal_fov>1.211</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <depth_camera>
+          <clip>
+            <near>0.1</near>
+            <far>10</far>
+          </clip>
+        </depth_camera>
+        <clip>
+          <near>0.1</near>
+          <far>100</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.007</stddev>
+        </noise>
+      </camera>
+      <always_on>1</always_on>
+    </sensor>
+</link>  <!-- Make sure this closing tag exists -->
+    <!-- IMU Link -->
+    <link name="robot_namespace/imu_link">
+      <pose>0 0 0.1711 0 0 0</pose>
+      <inertial>
+        <mass>0.1</mass>
+        <inertia>
+          <ixx>0.00001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00001</iyy>
+          <iyz>0</iyz>
+          <izz>0.00001</izz>
+        </inertia>
+      </inertial>
+      <collision name="robot_namespace/imu_collision">
+        <geometry>
+          <box>
+            <size>0.01 0.01 0.005</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="robot_namespace/imu_visual">
+        <geometry>
+          <box>
+            <size>0.01 0.01 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+      <sensor name="robot_namespace/imu_sensor" type="imu">
+        <topic>/robot_namespace/imu</topic>
+        <update_rate>100</update_rate>
+        <always_on>1</always_on>
+        <gz_frame_id>robot_namespace/imu_link</gz_frame_id>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.009</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.009</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.009</stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.017</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.017</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.017</stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </link>
+
+    <!-- Joints -->
+
+    <!-- Joint: base_footprint -> base_link -->
+    <joint name="robot_namespace/base_footprint_joint" type="fixed">
+      <parent>robot_namespace/base_footprint</parent>
+      <child>robot_namespace/base_link</child>
+    </joint>
+
+    <joint name="robot_namespace/left_wheel_joint" type="revolute">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/left_wheel</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <joint name="robot_namespace/right_wheel_joint" type="revolute">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/right_wheel</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <joint name="robot_namespace/caster_fl_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/caster_fl</child>
+    </joint>
+
+    <joint name="robot_namespace/caster_fr_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/caster_fr</child>
+    </joint>
+
+    <joint name="robot_namespace/caster_rl_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/caster_rl</child>
+    </joint>
+
+    <joint name="robot_namespace/caster_rr_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/caster_rr</child>
+    </joint>
+
+    <joint name="robot_namespace/lidar_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/scan_link</child>
+    </joint>
+
+    <joint name="robot_namespace/camera1_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/camera1_link</child>
+    </joint>
+
+    <joint name="robot_namespace/camera2_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/camera2_link</child>
+    </joint>
+
+    <joint name="robot_namespace/imu_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/imu_link</child>
+    </joint>
+    
+    <joint name="robot_namespace/chassis_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/chassis_link</child>
+    </joint>
+
+    <joint name="robot_namespace/axcel_shaft_joint" type="fixed">
+      <parent>robot_namespace/base_link</parent>
+      <child>robot_namespace/axcel_shaft_link</child>
+    </joint>
+
+    <!-- Differential Drive Plugin -->
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>robot_namespace/left_wheel_joint</left_joint>
+      <right_joint>robot_namespace/right_wheel_joint</right_joint>
+      <wheel_separation>0.3162</wheel_separation>
+      <wheel_radius>0.0865</wheel_radius>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <topic>/robot_namespace/filtered_key_vel</topic>
+      <odom_topic>/robot_namespace/odometry</odom_topic>
+      <frame_id>robot_namespace/ekf_odom</frame_id>
+      <child_frame_id>robot_namespace/base_footprint</child_frame_id>
+      <max_linear_acceleration>1.0</max_linear_acceleration>
+      <max_angular_acceleration>2.0</max_angular_acceleration>
+      <!-- Standard deviation of Gaussian noise added to both pose and twist -->
+      <gaussian_noise>0.5</gaussian_noise>
+    </plugin>
+
+    <plugin filename="gz-sim-odometry-publisher-system"
+        name="gz::sim::systems::OdometryPublisher">
+      <odom_publish_frequency>10</odom_publish_frequency>
+      <odom_frame>robot_namespace/ekf_odom</odom_frame>
+      <robot_base_frame>robot_namespace/base_footprint</robot_base_frame>
+      <odom_topic>/robot_namespace/odometry</odom_topic>
+
+      <!-- Per-axis noise (mean, stddev) -->
+      <xyz_offset>0 0 0</xyz_offset>
+      <rpy_offset>0 0 0</rpy_offset>
+      <gaussian_noise>0.5</gaussian_noise>
+    </plugin>
+
+
+    <!-- Pose Publisher Plugin -->
+    <!-- <plugin filename="gz-sim-pose-publisher-system" name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>true</publish_link_pose>
+      <publish_sensor_pose>false</publish_sensor_pose>
+      <publish_collision_pose>false</publish_collision_pose>
+      <publish_visual_pose>false</publish_visual_pose>
+      <publish_nested_model_pose>false</publish_nested_model_pose>
+      <update_frequency>50</update_frequency>
+
+    </plugin> -->
+
+    <plugin
+        filename="gz-sim-joint-state-publisher-system"
+        name="gz::sim::systems::JointStatePublisher">
+        <topic>/model/robot_namespace/joint_states</topic>
+        <joint_name>robot_namespace/left_wheel_joint</joint_name>
+        <joint_name>robot_namespace/right_wheel_joint</joint_name>
+    </plugin>
+  </model>
+</sdf>

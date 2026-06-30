@@ -1,0 +1,218 @@
+
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <!-- Fallback (NOT Sequence): Phase 1 failing must HAND OFF to Phase 2,
+         not abort the goal. A Sequence would short-circuit on Phase 1 FAILURE
+         and never tick Phase 2 (so HeadingCorrection never ran when the robot
+         was near + stuck — the goal aborted without correcting heading).
+         With a Fallback:
+           - Phase 1 SUCCESS (goal reached) → Fallback SUCCESS, Phase 2 skipped.
+           - Phase 1 FAILURE (near goal, blocked) → Phase 2 runs → drive to the
+             nearest free point, else rotate in place to the goal yaw. -->
+    <Fallback name="TwoPhaseNavigation">
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           PHASE 1: Far-from-goal recovery — exits when:
+             (a) navigation succeeds (goal reached), or
+             (b) robot is within 1.5 m of goal and still failing, or
+             (c) 4 far-recovery cycles are exhausted
+           ═══════════════════════════════════════════════════════════════ -->
+      <RecoveryNode number_of_retries="100" name="Phase1-FarNavigation">
+
+        <!-- Main navigation pipeline -->
+        <PipelineSequence name="NavigateWithReplanning">
+          <ControllerSelector selected_controller="{selected_controller}"
+                              default_controller="FollowPath"
+                              topic_name="controller_selector"/>
+          <PlannerSelector selected_planner="{selected_planner}"
+                           default_planner="GridBased"
+                           topic_name="planner_selector"/>
+          <RateController hz="1.0">
+            <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+              <ComputePathToPose goal="{goal}" path="{path}"
+                                 planner_id="{selected_planner}"
+                                 error_code_id="{compute_path_error_code}"/>
+              <Sequence>
+                <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                <ClearEntireCostmap name="ClearGlobalCostmap-Context"
+                                    service_name="global_costmap/clear_entirely_global_costmap"/>
+              </Sequence>
+            </RecoveryNode>
+          </RateController>
+          <RecoveryNode number_of_retries="1" name="FollowPath">
+            <FollowPath path="{path}" controller_id="{selected_controller}"
+                        error_code_id="{follow_path_error_code}"/>
+            <Sequence>
+              <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+              <ClearEntireCostmap name="ClearLocalCostmap-Context"
+                                  service_name="local_costmap/clear_entirely_local_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+        </PipelineSequence>
+
+        <!-- Distance-gated recovery branch:
+             - GetCurrentPose fetches robot pose into {current_pose}
+             - Inverter(ArePosesNear): SUCCESS when FAR, FAILURE when NEAR
+             - When NEAR: this Sequence immediately returns FAILURE
+               → RecoveryNode sees recovery fail → exits FAILURE → Phase 2 starts
+             - When FAR: runs normal recovery actions, returns SUCCESS
+               → RecoveryNode retries Phase 1 (up to 4 cycles) -->
+        <Sequence name="FarGoalRecovery">
+          <GetCurrentPose current_pose="{current_pose}"/>
+          <Inverter name="NotNearGoal">
+            <ArePosesNear ref_pose="{current_pose}" target_pose="{goal}" tolerance="2.0"/>
+          </Inverter>
+          <Fallback>
+            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+            <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+          </Fallback>
+          <ReactiveFallback name="RecoveryFallback">
+            <GoalUpdated/>
+            <!--
+              RecoveryOncePerLocation: permits recovery actions to run at most
+              once per unique stuck location.
+              - First stuck event: always runs.
+              - Subsequent calls at the same spot (dist < min_distance): returns
+                SUCCESS (skip), so RecoveryNode(999999) stays alive and keeps
+                retrying replanning without wasting time on useless recovery.
+              - When robot moves >= min_distance away and gets stuck again:
+                runs recovery once more and updates the saved pose.
+            -->
+            <RecoveryOncePerLocation min_distance="0.5" name="OncePerLocation">
+              <!-- SequenceWithMemory: runs all actions as one atomic block.
+                   If Spin fails mid-way, Wait/BackUp are still skipped (memory
+                   of prior successes is kept). The whole block = one recovery
+                   event per location. -->
+              <SequenceWithMemory name="RecoveryActions">
+                <ClearEntireCostmap name="ClearLocalCostmap-Subtree"
+                                    service_name="local_costmap/clear_entirely_local_costmap"/>
+                <ClearEntireCostmap name="ClearGlobalCostmap-Subtree"
+                                    service_name="global_costmap/clear_entirely_global_costmap"/>
+                <!-- <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/> -->
+                <Wait wait_duration="1.0"/>
+                <BackUp backup_dist="0.10" backup_speed="0.15"
+                        error_code_id="{backup_code_id}"/>
+              </SequenceWithMemory>
+            </RecoveryOncePerLocation>
+          </ReactiveFallback>
+        </Sequence>
+
+      </RecoveryNode>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           PHASE 2: Near-goal navigation — drive as close as possible, then align
+           Entered when: robot < 1.2m from goal and still failing
+           Also runs (exits immediately with SUCCESS) if Phase 1 succeeded
+           ═══════════════════════════════════════════════════════════════ -->
+      <!-- Fallback (Phase 2): TRY to drive to the nearest free point near the
+           goal. If that whole pipeline FAILS (goal walled off, no safe approach
+           point, planner empty), fall through to HeadingCorrection — the robot
+           is already parked as close as it could get, so rotate in place to the
+           goal yaw and report SUCCESS. This guarantees the align-and-finish
+           behavior is ALWAYS reachable, instead of being gated behind the very
+           planning step that is failing.
+           NOTE: this is a plain Fallback, NOT wrapped in a RecoveryNode — a
+           RecoveryNode requires exactly 2 children and would throw
+           "must only have 2 children" with a single Fallback child. -->
+      <Fallback name="Phase2-NearGoalNavigation">
+
+        <PipelineSequence name="NearGoalNavigateWithReplanning">
+          <ControllerSelector selected_controller="{selected_controller}"
+                              default_controller="FollowPath"
+                              topic_name="controller_selector"/>
+          <PlannerSelector selected_planner="{selected_planner}"
+                           default_planner="GridBased"
+                           topic_name="planner_selector"/>
+          <RateController hz="1.0">
+            <RecoveryNode number_of_retries="1" name="ComputePathToPose-Near">
+              <Fallback name="FrozenPathOrReplan-Near">
+                <ReactiveSequence name="ReuseFrozenPath-Near">
+                  <!-- Snapshot-once + goal-update invalidation in one gate.
+                        * Reuse the frozen path when the goal is UNCHANGED
+                          AND {frozen_path} already holds a usable
+                          (non-empty, nearby) path → both children of
+                          "FrozenStillValid" SUCCEED → skip capture.
+                        * Otherwise (goal CHANGED, or {frozen_path} empty on
+                          first entry into the 4 m zone) → "FrozenStillValid"
+                          FAILS → SetBlackboard (re)captures the current
+                          still-valid {path} into {frozen_path}.
+                        This needs no empty-path literal: a changed goal
+                        simply forces a re-snapshot from the freshly
+                        replanned {path}. -->
+                  <Fallback name="EnsureFrozenCaptured">
+                    <Sequence name="FrozenStillValid">
+                      <Inverter>
+                        <GlobalUpdatedGoal/>
+                      </Inverter>
+                      <IsGoalNearby path="{frozen_path}" proximity_threshold="5.0"
+                                    max_robot_pose_search_dist="3.0"/>
+                    </Sequence>
+                    <SetBlackboard output_key="frozen_path" value="{path}"/>
+                  </Fallback>
+                  <TruncatePathLocal input_path="{frozen_path}" output_path="{near_path}"
+                                      distance_forward="1.5" distance_backward="0.0"
+                                      pose="{current_pose}"/>                   
+                </ReactiveSequence>
+                <!-- Reached when no reusable frozen path exists (goal started inside
+                     the near zone) or the goal cell is blocked/inflated so a tight
+                     (0.01) plan to {goal} returns EMPTY. Drive AS CLOSE AS POSSIBLE:
+                       1. Plan to {goal} with the LOOSE planner (GridBased,
+                          tol 0.3) to get a path that approaches the blocked goal.
+                       2. NearestFreePointOnPath walks {loose_path} and returns the
+                          nearest SAFE free point near the goal ({near_goal}),
+                          preserving the goal's heading (reads live local costmap).
+                       3. Plan to {near_goal} with the tight planner → {near_path},
+                          which FollowPath drives up to the obstacle.
+                     At 1 Hz this re-plans each second, so a transient obstacle that
+                     leaves is rediscovered. If the goal is truly walled off (no safe
+                     point within search_radius), this Sequence FAILS and we fall
+                     through to HeadingCorrection (park + align). -->
+                <Sequence name="DriveToNearestFreePoint-Near">
+                  <ComputePathToPose goal="{goal}" path="{loose_path}"
+                                      planner_id="GridBased"
+                                      error_code_id="{compute_path_error_code}"/>
+                  <NearestFreePointOnPath path="{loose_path}" goal="{goal}"
+                                          new_goal="{near_goal}"/>
+                  <ComputePathToPose goal="{near_goal}" path="{near_path}"
+                                      planner_id="{selected_planner}"
+                                      error_code_id="{compute_path_error_code}"/>
+                </Sequence>
+                <!-- <ComputePathToPose goal="{goal}" path="{near_path}"
+                                    planner_id="{selected_planner}"
+                                    error_code_id="{compute_path_error_code}"/> -->
+              </Fallback>
+
+              <ClearEntireCostmap name="ClearGlobalCostmap-Near"
+                                  service_name="global_costmap/clear_entirely_global_costmap"/>
+            </RecoveryNode>
+          </RateController>
+          <RecoveryNode number_of_retries="1" name="FollowPath-Near">
+            <FollowPath path="{near_path}" controller_id="{selected_controller}"
+                        error_code_id="{follow_path_error_code}"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Near"
+                                service_name="local_costmap/clear_entirely_local_costmap"/>
+          </RecoveryNode>
+        </PipelineSequence>
+
+          <!-- Last resort: goal is blocked and no safe approach point was
+               reachable, so the drive pipeline above FAILED. The robot is
+               already parked as close as it could get. Rotate in place to the
+               original goal's yaw and return SUCCESS — accept the XY error
+               since we are within goal_proximity. If the robot is somehow
+               farther than goal_proximity, HeadingCorrection returns FAILURE
+               → Phase 2 RecoveryNode retries once → then the goal aborts. -->
+          <HeadingCorrection name="AlignToGoalYaw"
+                              goal="{goal}"
+                              yaw_goal_tolerance="0.07"
+                              max_angular_speed="0.6"
+                              min_angular_speed="0.15"
+                              goal_proximity="2.5"
+                              cmd_vel_topic="cmd_vel_nav"/>
+
+      </Fallback>
+
+    </Fallback>
+  </BehaviorTree>
+</root>
+
+

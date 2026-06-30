@@ -1,0 +1,322 @@
+<!--
+  Distance-first navigation BT with intelligent near-goal recovery.
+
+  REACTIVE phase selection: ReactiveSequence around DistanceFirstNavigation
+  re-ticks GetCurrentPose + PhaseSelector on EVERY tick, even while a child
+  (FollowPath, etc.) is RUNNING. PhaseSelector is a ReactiveFallback so the
+  phase gate (ArePosesNear) is re-evaluated each tick — when the robot
+  crosses the 2.0 m boundary mid-FollowPath, the previous phase is halted
+  and the correct phase takes over immediately.
+
+    NEAR (< 2.0m) → Phase 2: near-goal pipeline with alternative goal finding
+    FAR  (> 2.0m) → Phase 1: far pipeline, one attempt per cycle
+
+  Phase 2 Near-Goal Recovery Strategy:
+    1. If pipeline fails, NearestFreePointOnPath searches global path
+    2. Finds free point within ~1.0m radius of original goal
+    3. Updates goal to the alternative point (if found)
+    4. Next pipeline attempt uses new goal
+    5. Falls back to Spin/BackUp/Costmap clearing if no alternative found
+    6. LAST RESORT — if NearGoalAttempts exhausts (alt goal not found AND
+       pipeline still blocked by RPP collision_detection at goal cell):
+       HeadingCorrection rotates in place to original goal yaw →
+       Phase2 SUCCESS → navigation completes with correct heading.
+
+  When Phase 1 fails (far): FarGoalRecovery runs → loop retries (unlimited)
+  When Phase 2 exhausts all recovery options: navigation aborts (expected)
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <Sequence name="Navigation">
+
+      <RecoveryNode number_of_retries="999999" name="MainNavigationLoop">
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             NAVIGATION CHILD: check distance FIRST, then route to phase
+             ReactiveSequence ensures GetCurrentPose + PhaseSelector are
+             re-ticked every cycle (not just once before FollowPath blocks
+             as RUNNING). ReactiveFallback re-evaluates ArePosesNear so the
+             phase transition happens the moment the robot crosses 2.0 m.
+             ═══════════════════════════════════════════════════════════════ -->
+        <ReactiveSequence name="DistanceFirstNavigation">
+          <GetCurrentPose current_pose="{current_pose}"/>
+
+          <ReactiveFallback name="PhaseSelector">
+
+            <!-- ── PHASE 2: NEAR GOAL (< 2.0m) ─────────────────────────────
+                 ArePosesNear SUCCESS → enters RecoveryNode(1).
+                 When all 2 retries fail:
+                   Phase2 FAILS → PhaseSelector tries Phase1
+                   Phase1 Inverter(near) FAILS → PhaseSelector FAILS
+                   → DistanceFirstNavigation FAILS
+                   → FarGoalRecovery distance gate FAILS (near)
+                   → MainNavigationLoop FAILS → navigation aborts           -->
+            <Sequence name="Phase2-NearGoal">
+              <ArePosesNear ref_pose="{current_pose}" target_pose="{goal}" tolerance="2.0"/>
+
+              <Fallback name="NearGoalNavOrAlign">
+
+              <RecoveryNode number_of_retries="3" name="NearGoalAttempts">
+
+                <PipelineSequence name="NearGoalPipeline">
+                  <ControllerSelector selected_controller="{selected_controller}"
+                                      default_controller="FollowPath"
+                                      topic_name="controller_selector"/>
+                  <PlannerSelector selected_planner="{selected_planner}"
+                                   default_planner="GridBased"
+                                   topic_name="planner_selector"/>
+                  <RateController hz="1.0">
+                    <RecoveryNode number_of_retries="1" name="ComputePathToPose-Near">
+                      <ComputePathToPose goal="{goal}" path="{path}"
+                                         planner_id="{selected_planner}"
+                                         error_code_id="{compute_path_error_code}"/>
+                      <ClearEntireCostmap name="ClearGlobalCostmap-Near"
+                                          service_name="global_costmap/clear_entirely_global_costmap"/>
+                    </RecoveryNode>
+                  </RateController>
+                  <RecoveryNode number_of_retries="1" name="FollowPath-Near">
+                    <FollowPath path="{path}" controller_id="{selected_controller}"
+                                error_code_id="{follow_path_error_code}"/>
+                    <ClearEntireCostmap name="ClearLocalCostmap-Near"
+                                        service_name="local_costmap/clear_entirely_local_costmap"/>
+                  </RecoveryNode>
+                </PipelineSequence>
+
+                <!-- Near-goal outer recovery: no guards, all actions obstacle-safe -->
+                <ReactiveFallback name="NearGoalRecoveryFallback">
+                  <GoalUpdated/>
+                  <!-- Attempt 1: Find alternative goal on global path when stuck near goal -->
+                  <Sequence name="FindAlternativeGoalOnPath">
+                    <NearestFreePointOnPath path="{path}" goal="{goal}" new_goal="{alternative_goal}"/>
+                    <SetBlackboard output_key="goal" value="{alternative_goal}"/>
+                  </Sequence>
+                  <RoundRobin name="NearGoalRecoveryActions">
+                    <Sequence name="NearGoalClearingActions">
+                      <ClearEntireCostmap name="ClearLocalCostmap-NearSubtree"
+                                          service_name="local_costmap/clear_entirely_local_costmap"/>
+                      <ClearEntireCostmap name="ClearGlobalCostmap-NearSubtree"
+                                          service_name="global_costmap/clear_entirely_global_costmap"/>
+                    </Sequence>
+                    <!-- Fallback: Spin may fail near obstacle → Wait keeps RoundRobin alive -->
+                    <Fallback>
+                      <!-- <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/> -->
+                      <Wait wait_duration="1.0"/>
+                    <!-- Fallback: BackUp may fail near obstacle → Wait keeps RoundRobin alive -->
+                      <BackUp backup_dist="0.10" backup_speed="0.10"
+                              error_code_id="{backup_code_id}"/>
+                    </Fallback>
+                  </RoundRobin>
+                </ReactiveFallback>
+
+              </RecoveryNode>
+
+              <!-- Last-resort: alt goal not found AND pipeline can't make
+                   progress (e.g. RPP collision_detection aborts FollowPath
+                   when an obstacle occupies the goal cell). Rotate in place
+                   to the original goal's yaw and finish — accepts the small
+                   XY error since we are already within 2.0 m of the goal. -->
+              <HeadingCorrection name="AlignToGoalYaw"
+                                 goal="{goal}"
+                                 yaw_goal_tolerance="0.07"
+                                 max_angular_speed="0.6"
+                                 min_angular_speed="0.15"
+                                 goal_proximity="2.0"
+                                 cmd_vel_topic="cmd_vel_nav"/>
+
+              </Fallback>
+            </Sequence>
+
+            <!-- ── PHASE 1: FAR FROM GOAL (> 2.0m) ──────────────────────────
+                 Inverter(ArePosesNear) SUCCESS when far → runs far pipeline.
+                 If far pipeline fails:
+                   Phase1 FAILS → PhaseSelector FAILS
+                   → DistanceFirstNavigation FAILS
+                   → FarGoalRecovery runs → loop retries (unlimited)        -->
+            <Sequence name="Phase1-FarGoal">
+              <Inverter name="OnlyWhenFar">
+                <ArePosesNear ref_pose="{current_pose}" target_pose="{goal}" tolerance="2.0"/>
+              </Inverter>
+
+              <PipelineSequence name="FarGoalPipeline">
+                <ControllerSelector selected_controller="{selected_controller}"
+                                    default_controller="FollowPath"
+                                    topic_name="controller_selector"/>
+                <PlannerSelector selected_planner="{selected_planner}"
+                                 default_planner="GridBased"
+                                 topic_name="planner_selector"/>
+                <RateController hz="1.0">
+                  <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+                    <ComputePathToPose goal="{goal}" path="{path}"
+                                       planner_id="{selected_planner}"
+                                       error_code_id="{compute_path_error_code}"/>
+                    <Sequence>
+                      <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                      <ClearEntireCostmap name="ClearGlobalCostmap-Context"
+                                          service_name="global_costmap/clear_entirely_global_costmap"/>
+                    </Sequence>
+                  </RecoveryNode>
+                </RateController>
+                <RecoveryNode number_of_retries="1" name="FollowPath">
+                  <FollowPath path="{path}" controller_id="{selected_controller}"
+                              error_code_id="{follow_path_error_code}"/>
+                  <Sequence>
+                    <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                    <ClearEntireCostmap name="ClearLocalCostmap-Context"
+                                        service_name="local_costmap/clear_entirely_local_costmap"/>
+                  </Sequence>
+                </RecoveryNode>
+              </PipelineSequence>
+            </Sequence>
+
+          </ReactiveFallback>
+        </ReactiveSequence>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             RECOVERY CHILD: far-goal only (distance-gated)
+             Near-goal recovery lives inside Phase 2's RecoveryNode(2).
+               FAR:  gate passes → recovery runs → SUCCESS → loop retries
+               NEAR: gate FAILS → recovery FAILS → MainNavigationLoop FAILS → abort
+             ═══════════════════════════════════════════════════════════════ -->
+        <Sequence name="FarGoalRecovery">
+          <GetCurrentPose current_pose="{current_pose}"/>
+          <Inverter name="OnlyWhenFar">
+            <ArePosesNear ref_pose="{current_pose}" target_pose="{goal}" tolerance="2.0"/>
+          </Inverter>
+          <Fallback name="ShouldRecover">
+            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+            <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+          </Fallback>
+          <ReactiveFallback name="RecoveryFallback">
+            <GoalUpdated/>
+            <RecoveryOncePerLocation min_distance="0.5" name="OncePerLocation">
+              <SequenceWithMemory name="RecoveryActions">
+                <ClearEntireCostmap name="ClearLocalCostmap-Subtree"
+                                    service_name="local_costmap/clear_entirely_local_costmap"/>
+                <ClearEntireCostmap name="ClearGlobalCostmap-Subtree"
+                                    service_name="global_costmap/clear_entirely_global_costmap"/>
+                <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+                <Wait wait_duration="1.0"/>
+                <!-- <BackUp backup_dist="0.10" backup_speed="0.15"
+                        error_code_id="{backup_code_id}"/> -->
+              </SequenceWithMemory>
+            </RecoveryOncePerLocation>
+          </ReactiveFallback>
+        </Sequence>
+
+      </RecoveryNode>
+
+    </Sequence>
+  </BehaviorTree>
+</root>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     TREE STRUCTURE DIAGRAM
+     ═══════════════════════════════════════════════════════════════════
+
+Sequence "Navigation"
+│
+└── RecoveryNode (999999 retries) "MainNavigationLoop"
+    │
+    ├── [Child 1] ReactiveSequence "DistanceFirstNavigation"
+    │   ├── GetCurrentPose → {current_pose}            ← re-ticked every cycle
+    │   └── ReactiveFallback "PhaseSelector"           ← re-routes by distance every tick
+    │       │
+    │       ├── Sequence "Phase2-NearGoal"             ← tried FIRST
+    │       │   ├── ArePosesNear(tol=2.0)              ← gate: SUCCESS only when NEAR
+    │       │   └── Fallback "NearGoalNavOrAlign"
+    │       │       │   (1) try full near-goal navigation, including alt goal recovery
+    │       │       │   (2) if that ultimately fails, rotate-in-place to goal yaw
+    │       │       ├── RecoveryNode (2 retries) "NearGoalAttempts"
+    │       │       ├── PipelineSequence "NearGoalPipeline"
+    │       │       │   ├── ControllerSelector (default FollowPath)
+    │       │       │   ├── PlannerSelector (default GridBased)
+    │       │       │   ├── RateController (1 Hz)
+    │       │       │   │   └── RecoveryNode(2) "ComputePathToPose-Near"
+    │       │       │   │       ├── ComputePathToPose
+    │       │       │   │       └── ClearGlobalCostmap         ← NO guard
+    │       │       │   └── RecoveryNode(1) "FollowPath-Near"
+    │       │       │       ├── FollowPath
+    │       │       │       └── ClearLocalCostmap              ← NO guard
+    │       │       └── ReactiveFallback "NearGoalRecoveryFallback"
+    │       │           ├── GoalUpdated
+    │       │           ├── Sequence "FindAlternativeGoalOnPath"
+    │       │           │   ├── NearestFreePointOnPath (free point within ~1.0m of goal)
+    │       │           │   └── SetBlackboard (goal := {alternative_goal})
+    │       │           └── RoundRobin "NearGoalRecoveryActions"
+    │       │               ├── Sequence "NearGoalClearingActions": ClearLocal + ClearGlobal
+    │       │               └── Fallback: Spin(1.57) | Wait(1.0) | BackUp(0.15)   ← obstacle-safe
+    │       │       └── HeadingCorrection "AlignToGoalYaw" (goal_proximity=2.0)   ← last resort
+    │       │
+    │       └── Sequence "Phase1-FarGoal"              ← tried when Phase2 FAILS (far)
+    │           ├── Inverter "OnlyWhenFar" (ArePosesNear tol=2.0)  ← gate: SUCCESS only when FAR
+    │           └── PipelineSequence "FarGoalPipeline"
+    │               ├── ControllerSelector (default FollowPath)
+    │               ├── PlannerSelector (default GridBased)
+    │               ├── RateController (1 Hz)
+    │               │   └── RecoveryNode(1) "ComputePathToPose"
+    │               │       ├── ComputePathToPose
+    │               │       └── Sequence: WouldAPlannerRecoveryHelp → ClearGlobalCostmap   ← GATED
+    │               └── RecoveryNode(1) "FollowPath"
+    │                   ├── FollowPath
+    │                   └── Sequence: WouldAControllerRecoveryHelp → ClearLocalCostmap     ← GATED
+    │
+    └── [Child 2] Sequence "FarGoalRecovery"          ← far-only recovery
+        ├── GetCurrentPose → {current_pose}
+        ├── Inverter "OnlyWhenFar" (ArePosesNear tol=2.0)  ← FAILS when near → abort
+        ├── Fallback "ShouldRecover": WouldAControllerRecoveryHelp | WouldAPlannerRecoveryHelp
+        └── ReactiveFallback "RecoveryFallback"
+            ├── GoalUpdated
+            └── RecoveryOncePerLocation(min_distance=0.5) "OncePerLocation"
+                └── SequenceWithMemory "RecoveryActions"
+                    ├── ClearLocalCostmap
+                    ├── ClearGlobalCostmap
+                    ├── Spin(1.57 rad)
+                    ├── Wait(1.0 s)
+                    └── (BackUp — commented out)
+
+EXECUTION SCENARIOS:
+
+  Robot starts FAR, reaches goal without obstacles:
+    GetCurrentPose(far) → Phase2 FAILS(far) → Phase1 → pipeline SUCCESS → ✓
+
+  Robot starts FAR, gets stuck far:
+    GetCurrentPose(far) → Phase2 FAILS → Phase1 → pipeline FAILS
+    → FarGoalRecovery: GetCurrentPose(far) → gate OK → recovery → SUCCESS
+    → loop retries ∞
+
+  Robot navigating far, crosses 2.0m threshold (REACTIVE — happens mid-tick):
+    Phase1 FollowPath RUNNING → next tick: ReactiveSequence re-ticks
+    GetCurrentPose → ReactiveFallback re-evals Phase2 gate ArePosesNear(NEAR)
+    → Phase2 SUCCESS-gate → halts Phase1 → enters NearGoalAttempts pipeline
+    → SUCCESS ✓ or navigation fails → near recovery → tries alternative goal
+
+  Robot stuck < 2.0m, goal cell occupied (the fix that motivated this BT):
+    Phase1 FollowPath RUNNING when robot crosses 2.0m → ReactiveFallback
+    halts Phase1, enters Phase2 → pipeline FAILS (RPP collision)
+    → NearGoalRecoveryFallback runs (alt goal / costmap clear / Wait / BackUp)
+    → after retries: HeadingCorrection rotates to goal yaw → SUCCESS ✓
+
+  Robot stuck < 2.0m with original goal blocked (NEW SCENARIO):
+    Phase2 → NearGoalAttempts pipeline FAILS
+    → NearGoalRecoveryFallback → NearestFreePointOnPath SUCCESS
+    → Updates goal to free point on path (within 1.0m radius)
+    → Next NearGoalAttempts retry: pipeline with new goal → SUCCESS ✓
+    or new goal also blocked → Spin/BackUp recovery → retry
+
+  Robot stuck < 2.0m, goal cell occupied, RPP collision_detection aborts FollowPath:
+    Phase2 → NearGoalAttempts pipeline FAILS (RPP halts on collision)
+    → NearGoalRecoveryFallback → NearestFreePointOnPath FAILS (no free point)
+    → costmap clears / Spin / BackUp may run via RoundRobin
+    → NearGoalAttempts RecoveryNode(2) all retries FAIL
+    → NearGoalNavOrAlign tries child 2: HeadingCorrection
+    → robot rotates in place to original goal yaw → SUCCESS
+    → Phase2 SUCCESS → DistanceFirstNavigation SUCCESS
+    → MainNavigationLoop SUCCESS ✓ (accept small XY error, correct heading)
+
+  Robot stuck < 2.0m, also too far for HeadingCorrection (shouldn't happen):
+    HeadingCorrection FAILS (>2.0m from goal) → NearGoalNavOrAlign FAILS
+    → Phase2 FAILS → Phase1 Inverter(near) FAILS → DistanceFirstNavigation FAILS
+    → FarGoalRecovery: Inverter(near) FAILS → FAILS
+    → MainNavigationLoop FAILS → navigation aborts ✗
+-->

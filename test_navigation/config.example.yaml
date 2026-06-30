@@ -1,0 +1,44 @@
+# ----- robot namespace -----
+# Namespace of the robot whose Nav2 stack we drive (controls the
+# navigate_to_pose action name, e.g. "<ns>/navigate_to_pose").
+#   auto  -> discover it from the ROS graph (default if omitted)
+#   ""    -> global namespace (plain "navigate_to_pose")
+#   apple -> pin to that namespace
+robot_namespace: auto
+
+# ----- frames / pose source -----
+# map_frame, base_frame and pose_topic are optional: if omitted they default
+# off robot_namespace ("map", "<ns>/base_link", "/<ns>/amcl_pose"). Set them
+# explicitly only if your robot uses different names.
+map_frame: map
+# base_frame: apple/base_link
+
+# 'tf' uses TF lookup map_frame -> base_frame (Nav2's own localization).
+# 'topic' subscribes to a PoseWithCovarianceStamped (e.g. /amcl_pose,
+# or a mocap-bridged topic for true external ground truth).
+pose_source: tf
+# pose_topic: /apple/amcl_pose
+
+# ----- pass thresholds -----
+e_trans_threshold_m: 0.05      # ±5 cm
+e_heading_threshold_deg: 5.0   # ±5°
+
+# ----- run control -----
+repeats_per_goal: 2            # trials per goal
+settle_seconds: 1.0            # wait after "goal reached" before measuring
+interactive: true              # press ENTER between trials to reset the robot
+
+# ----- outputs -----
+# XLSX is the final formatted report (written at end of run).
+xlsx_path: /home/rgt/test_navigation/data/nav_eval.xlsx
+# CSV is appended live for crash safety. Set to null to disable.
+csv_path: /home/rgt/test_navigation/data/nav_eval.csv
+
+# ----- goals (theta in radians) -----
+# Tip: pick goals that exercise different distances, headings, and approaches.
+goals:
+  - { id: G1, x: 5.75, y:  34.2, theta:  0.0000 }   #   0°
+  # - { id: G2, x: 2.00, y:  1.50, theta:  1.5708 }   #  90°
+  # - { id: G3, x: 0.00, y:  2.00, theta:  3.1416 }   # 180°
+  # - { id: G4, x: -1.0, y:  1.00, theta: -1.5708 }   # -90°
+  # - { id: G5, x: 0.50, y: -1.00, theta:  0.7854 }   #  45°

@@ -1,0 +1,224 @@
+
+<!--
+  This Behavior Tree replans the global path periodically at 1 Hz and it also has
+  recovery actions specific to planning / control as well as general system issues.
+  This will be continuous if a kinematically valid planner is selected.
+-->
+<!-- <root BTCPP_format="6" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+        <Fallback>
+          <Sequence>
+            <NarrowPath/>
+            <PlannerSelector
+              selected_planner="{selected_planner}"
+              default_planner="NarrowPlanner"
+              topic_name="planner_selector"/>
+          </Sequence>
+          <PlannerSelector
+            selected_planner="{selected_planner}"
+            default_planner="GridBased"
+            topic_name="planner_selector"/>
+        </Fallback>
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+            <Sequence>
+              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+          <Sequence>
+            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+          </Sequence>
+        </RecoveryNode>
+      </PipelineSequence>
+      <Sequence>
+        <Fallback>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+        </Fallback>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="ClearingActions">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+            <Wait wait_duration="3.0"/>
+            <BackUp backup_dist="0.10" backup_speed="0.15" error_code_id="{backup_code_id}"/>
+          </RoundRobin>
+        </ReactiveFallback>
+      </Sequence>
+    </RecoveryNode>
+  </BehaviorTree>
+</root> -->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="10" name="NavigateRecovery">
+
+      <!-- ═══ CHILD 1: Normal navigation pipeline (modified) ═══ -->
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector
+          selected_controller="{selected_controller}"
+          default_controller="RPP"
+          topic_name="controller_selector"/>
+        <Fallback>
+          <Sequence>
+            <NarrowPath/>
+            <PlannerSelector
+              selected_planner="{selected_planner}"
+              default_planner="NarrowPlanner"
+              topic_name="planner_selector"/>
+          </Sequence>
+          <PlannerSelector
+            selected_planner="{selected_planner}"
+            default_planner="GridBased"
+            topic_name="planner_selector"/>
+        </Fallback>
+
+        <!-- ComputePath: No change -->
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose
+              goal="{goal}"
+              path="{path}"
+              planner_id="{selected_planner}"
+              error_code_id="{compute_path_error_code}"/>
+            <Sequence>
+              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+              <ClearEntireCostmap
+                name="ClearGlobalCostmap-Context"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+        </RateController>
+
+        <!--
+          THAY ĐỔI CHÍNH:
+          Sau khi NarrowPathHandler hoàn thành (SUCCESS),
+          reset path deleted {path} → chu kỳ tiếp theo RateController
+          tick ComputePathToPose → replan từ vị trí wait place → {path} mới
+          → FollowPath chạy lại với path mới về goal gốc.
+          Không cần restart toàn bộ pipeline.
+        -->
+        <ReactiveFallback name="FollowOrHandleNarrowPath">
+
+          <!-- Child 1: NarrowPath handler — no ForceFailure -->
+          <Sequence name="NarrowPathHandler_S2">
+
+            <!-- Guard -->
+            <HumanInNarrowPath/>    <!-- your detection plugin as a Condition node -->
+
+            <!-- Tính goal wait place -->
+            <SetGoalFromLocation
+              location_file="/home/rgt/rgt2_ws/src/rgt_navigation3/rgt_nav3_launch/cfg/location.yaml"
+              loc="closest"
+              goal="{wait_goal}"/>
+
+            <!-- Compute path tới wait place -->
+            <RateController hz="2.0">
+              <RecoveryNode number_of_retries="1" name="ComputePathToWait_S2">
+                <ComputePathToPose
+                  goal="{wait_goal}"
+                  path="{wait_path}"
+                  planner_id="{selected_planner}"
+                  error_code_id="{compute_path_error_code}"/>
+                <Sequence>
+                  <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+                  <ClearEntireCostmap
+                    name="ClearGlobalCostmap-Wait-S2"
+                    service_name="global_costmap/clear_entirely_global_costmap"/>
+                </Sequence>
+              </RecoveryNode>
+            </RateController>
+
+            <!-- Follow tới wait place -->
+            <RecoveryNode number_of_retries="1" name="FollowPathToWait_S2">
+              <FollowPath
+                path="{wait_path}"
+                controller_id="{selected_controller}"
+                error_code_id="{follow_path_error_code}"/>
+              <Sequence>
+                <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+                <ClearEntireCostmap
+                  name="ClearLocalCostmap-Wait-S2"
+                  service_name="local_costmap/clear_entirely_local_costmap"/>
+                </Sequence>
+            </RecoveryNode>
+
+            <!-- Wait at wait place until human clears the narrow path -->
+            <KeepRunningUntilFailure>
+              <HumanInNarrowPath/>
+            </KeepRunningUntilFailure>
+
+            <!--
+              Human is gone:
+              1. Reset {path} so ComputePathToPose replans from wait place to original goal.
+              2. ForceFailure makes NarrowPathHandler_S2 return FAILURE.
+                 → ReactiveFallback tries FollowPath → {path} empty → FAILURE
+                 → PipelineSequence FAILURE → RecoveryNode retries
+                 → RateController fires ComputePathToPose → new {path}
+                 → HumanInNarrowPath now FAILURE (human gone) → FollowPath runs → goal reached
+            -->
+            <ResetPath path="{path}"/>
+            <ForceFailure>
+              <AlwaysSuccess/>
+            </ForceFailure>
+          </Sequence>
+
+
+          <!-- Child 2: Conditional FollowPath — narrow path or normal -->
+          <RecoveryNode number_of_retries="1" name="FollowPath">
+            <ReactiveFallback name="NarrowOrNormalFollow">
+
+              <!-- Normal FollowPath (not a narrow path) -->
+              <FollowPath
+                path="{path}"
+                controller_id="{selected_controller}"
+                error_code_id="{follow_path_error_code}"/>
+
+            </ReactiveFallback>
+            <Sequence>
+              <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+              <ClearEntireCostmap
+                name="ClearLocalCostmap-Context"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
+            </Sequence>
+          </RecoveryNode>
+
+
+        </ReactiveFallback>
+      </PipelineSequence>
+
+      <!-- ═══ CHILD 2: Recovery subtree — giữ nguyên ═══ -->
+      <Sequence>
+        <Fallback>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+        </Fallback>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <Sequence name="ClearingActions">
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </Sequence>
+            <!-- <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/> -->
+            <Wait wait_duration="3.0"/>
+            <!-- <BackUp backup_dist="0.20" backup_speed="0.15" error_code_id="{backup_code_id}"/> -->
+          </RoundRobin>
+        </ReactiveFallback>
+      </Sequence>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>
+
+
